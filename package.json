@@ -1,0 +1,12 @@
+{
+  "name": "nyero-avr-system",
+  "version": "1.0.0",
+  "description": "Nyero AVR System with backend auth persistence",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

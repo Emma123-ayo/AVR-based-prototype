@@ -1,0 +1,104 @@
+[
+  {
+    "username": "ayo",
+    "type": "login",
+    "isAdmin": false,
+    "timestamp": "2026-06-12T07:09:55.818Z"
+  },
+  {
+    "username": "ayo",
+    "type": "register",
+    "isAdmin": false,
+    "timestamp": "2026-06-12T07:09:36.397Z"
+  },
+  {
+    "username": "sir",
+    "type": "login",
+    "isAdmin": false,
+    "timestamp": "2026-06-10T14:46:59.348Z"
+  },
+  {
+    "username": "emma",
+    "type": "admin-login",
+    "isAdmin": true,
+    "timestamp": "2026-06-10T14:46:12.661Z"
+  },
+  {
+    "username": "sir",
+    "type": "login",
+    "isAdmin": false,
+    "timestamp": "2026-06-10T14:45:24.546Z"
+  },
+  {
+    "username": "sir",
+    "type": "register",
+    "isAdmin": false,
+    "timestamp": "2026-06-10T14:45:01.636Z"
+  },
+  {
+    "username": "emma",
+    "type": "admin-login",
+    "isAdmin": true,
+    "timestamp": "2026-06-09T08:42:59.584Z"
+  },
+  {
+    "username": "emmanuel",
+    "type": "login",
+    "isAdmin": false,
+    "timestamp": "2026-06-09T08:36:47.968Z"
+  },
+  {
+    "username": "emmanuel",
+    "type": "register",
+    "isAdmin": false,
+    "timestamp": "2026-06-09T08:36:39.710Z"
+  },
+  {
+    "username": "emma",
+    "type": "admin-login",
+    "isAdmin": true,
+    "timestamp": "2026-06-09T04:18:33.913Z"
+  },
+  {
+    "username": "testuser",
+    "type": "login",
+    "isAdmin": false,
+    "timestamp": "2026-06-08T18:24:36.541Z"
+  },
+  {
+    "username": "testuser",
+    "type": "register",
+    "isAdmin": false,
+    "timestamp": "2026-06-08T18:24:36.476Z"
+  },
+  {
+    "username": "emma",
+    "type": "admin-login",
+    "isAdmin": true,
+    "timestamp": "2026-06-05T10:06:17.932Z"
+  },
+  {
+    "username": "emma",
+    "type": "admin-login",
+    "isAdmin": true,
+    "timestamp": "2026-06-05T03:49:44.664Z"
+  },
+  {
+    "username": "emma",
+    "type": "admin-login",
+    "isAdmin": true,
+    "timestamp": "2026-06-04T20:43:08.573Z"
+  },
+  {
+    "username": "testuser2",
+    "type": "login",
+    "isAdmin": false,
+    "timestamp": "2026-06-04T20:20:51.924Z"
+  },
+  {
+    "username": "testuser2",
+    "type": "register",
+    "isAdmin": false,
+    "timestamp": "2026-06-04T20:20:28.264Z"
+  }
+]

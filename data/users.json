@@ -1,0 +1,32 @@
+{
+  "emma": {
+    "hash": "71747a93a71dfab4974806e63aaf8a2a9c266abd94cae485b4cad187decfaafb",
+    "createdAt": "2026-06-04T18:56:46.371Z",
+    "isAdmin": true
+  },
+  "testuser2": {
+    "hash": "218a7100b92048015fce4a652412dfb72cf56043815e1108b59778a4ab115d4a",
+    "createdAt": "2026-06-04T20:20:28.260Z",
+    "isAdmin": false
+  },
+  "testuser": {
+    "hash": "4136ad7843a37f82e156e59383de9aedc5c806d047f2806ea62b9d0e4e564ed9",
+    "createdAt": "2026-06-08T18:24:36.466Z",
+    "isAdmin": false
+  },
+  "emmanuel": {
+    "hash": "5a692e5b612e7e14cf2d9027565877658662b67a9e4c58aeb2dc9be084e1e88a",
+    "createdAt": "2026-06-09T08:36:39.704Z",
+    "isAdmin": false
+  },
+  "sir": {
+    "hash": "b3418c7e3771863e18e0b805cf2fbb602f27bbaccdf8b987de8705154c8587a4",
+    "createdAt": "2026-06-10T14:45:01.626Z",
+    "isAdmin": false
+  },
+  "ayo": {
+    "hash": "f4934393c5974fd94e2d68535f333ac41494b4be4ccdbd4195c7f52c151d6966",
+    "createdAt": "2026-06-12T07:09:36.389Z",
+    "isAdmin": false
+  }
+}

@@ -1,0 +1,2614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nyero AVR System</title>
+    <!-- Change this to your local copy for true offline use -->
+    <script src="aframe.min.js"></script>
+    <style>
+        /* UI polish */
+        #nav-panel button { box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
+        #nav-panel { backdrop-filter: blur(4px); }
+        #info-overlay { transition: opacity 180ms ease; }
+        #info-overlay .info-desc { max-height: 60vh; overflow:auto; }
+        #info-overlay img { box-shadow: 0 10px 30px rgba(0,0,0,0.6); border: 2px solid #222; }
+        .hotspot-label { font-family: Arial, sans-serif; font-size: 14px; color: #fff; }
+        .muted { opacity: 0.5 }
+        body, html { touch-action: none; }
+        #mobile-controls { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; gap: 12px; z-index: 10000; }
+        .mobile-button { width: 60px; height: 60px; border-radius: 50%; border: none; background: rgba(17,17,17,0.85); color: #fff; font-size: 1.4rem; box-shadow: 0 8px 18px rgba(0,0,0,0.4); }
+        .mobile-button:active { background: rgba(255,255,255,0.15); }
+        #mobile-gui { position: fixed; right: 12px; bottom: 12px; z-index: 10000; background: rgba(0,0,0,0.6); padding: 10px 12px; border-radius: 10px; color: #fff; font-family: Arial, sans-serif; font-size: 12px; max-width: 260px; }
+        #desktop-gui { position: fixed; left: 12px; bottom: 12px; z-index: 10000; background: rgba(0,0,0,0.6); padding: 10px 12px; border-radius: 10px; color: #fff; font-family: Arial, sans-serif; font-size: 12px; max-width: 260px; }
+        @media (min-width: 900px) { #mobile-controls { display: none; } }
+        @media (max-width: 899px) { #desktop-gui { display: none; } }
+
+        /* Hide scene and scene-related overlays until signed in */
+        body { margin: 0; padding: 0; background: linear-gradient(135deg, #0a1428 0%, #051620 50%, #0a0e1a 100%); color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; min-height: 100vh; }
+        
+        /* Hide all scene elements by default on page load */
+        a-scene,
+        #nav-panel,
+        #mobile-controls,
+        #mobile-gui,
+        #desktop-gui,
+        #info-overlay,
+        #minimap,
+        #progress-container,
+        #search-container { display: none !important; }
+        
+        /* Auth modals should always be visible when shown */
+        #auth-modal,
+        #admin-login-modal,
+        #admin-panel-modal,
+        #login-history-modal { display: flex; }
+        
+        /* When not-signed-in, show auth screen and hide scene - redundant but explicit */
+        body.not-signed-in a-scene,
+        body.not-signed-in #nav-panel,
+        body.not-signed-in #mobile-controls,
+        body.not-signed-in #mobile-gui,
+        body.not-signed-in #desktop-gui,
+        body.not-signed-in #info-overlay { display: none !important; }
+        
+        /* When signed-in (not-signed-in class removed), show scene and hide auth */
+        body.signed-in a-scene,
+        body.signed-in #nav-panel,
+        body.signed-in #mobile-controls,
+        body.signed-in #mobile-gui,
+        body.signed-in #desktop-gui { display: inherit !important; }
+        body.signed-in #auth-modal,
+        body.signed-in #admin-login-modal { display: none !important; }
+        
+        /* Hide loader overlay by default; show only when explicitly needed by scene loading logic */
+        #loader-overlay { display: none !important; }
+
+        /* Auth / admin panel UI */
+        .auth-modal, .admin-modal, .admin-panel-modal, .login-history-modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(5, 15, 35, 0.97), rgba(2, 8, 20, 0.99)); z-index: 100000; padding: 18px; backdrop-filter: blur(2px); }
+        .auth-card, .admin-card, .admin-panel-card, .login-history-card { width: min(460px, 100%); background: linear-gradient(135deg, rgba(18, 35, 70, 0.99), rgba(12, 22, 45, 0.99)); border: 1px solid rgba(80, 160, 255, 0.22); border-radius: 28px; box-shadow: 0 40px 120px rgba(0, 80, 200, 0.15), inset 0 1px 2px rgba(255,255,255, 0.08); overflow: hidden; }
+        .auth-content, .admin-content, .admin-panel-content { padding: 32px 32px 28px; display: grid; gap: 18px; }
+        .auth-header, .admin-header, .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .auth-title, .admin-title, .panel-title { margin: 0; font-size: 1.6rem; color: #fff; letter-spacing: -0.03em; }
+        .auth-subtitle, .admin-subtitle, .panel-subtitle { margin: 0; color: #b8c6d1; font-size: 0.95rem; line-height: 1.5; }
+        .auth-row, .admin-row { display: grid; gap: 12px; }
+        .auth-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+        .auth-button.wide { width: 100%; }
+        .auth-button.compact { width: auto; min-width: 140px; }
+        .auth-input, .admin-input { width: 100%; padding: 14px 16px; border-radius: 14px; border: 1px solid rgba(100, 160, 255, 0.2); background: rgba(100, 150, 255, 0.06); color: #fff; font-size: 0.98rem; outline: none; transition: all 0.25s ease; }
+        .auth-input::placeholder, .admin-input::placeholder { color: #7fa8d9; }
+        .auth-input:focus, .admin-input:focus { border-color: #4a9eff; box-shadow: 0 0 0 5px rgba(74, 158, 255, 0.2); background: rgba(100, 150, 255, 0.12); }
+        .auth-button, .admin-button { padding: 14px 18px; border-radius: 14px; border: none; font-size: 1rem; font-weight: 700; cursor: pointer; transition: transform 0.18s ease, box-shadow 0.18s ease; }
+        .auth-button:hover, .admin-button:hover { transform: translateY(-1px); }
+        .auth-primary { background: linear-gradient(135deg, #4a9eff 0%, #20d9c0 100%); color: #fff; box-shadow: 0 20px 40px rgba(50, 130, 255, 0.3); font-weight: 700; }
+        .auth-primary:hover { box-shadow: 0 24px 50px rgba(50, 130, 255, 0.4); }
+        .auth-secondary { background: rgba(255,255,255,0.1); color: #e8f4ff; border: 1px solid rgba(100, 160, 255, 0.15); }
+        .auth-secondary:hover { background: rgba(255,255,255,0.15); }
+        .auth-ghost { background: transparent; border: 1.5px solid rgba(150, 190, 255, 0.25); color: #b0d9ff; }
+        .auth-note { color: #9ac5ff; font-size: 0.92rem; line-height: 1.5; }
+        .auth-status { min-height: 24px; font-size: 0.95rem; color: #f88; }
+        .auth-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+        .auth-link { color: #6ab4ff; cursor: pointer; text-decoration: underline; font-size: 0.95rem; font-weight: 600; transition: color 0.2s ease; }
+        .auth-link:hover { color: #9ad9ff; }
+        .auth-tabbar { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+        .auth-tab { padding: 13px 18px; border-radius: 14px; background: rgba(100, 160, 255, 0.08); color: #9ac5ff; text-align: center; cursor: pointer; transition: all 0.25s ease; font-weight: 600; border: 1px solid rgba(100, 160, 255, 0.1); }
+        .auth-tab:hover { background: rgba(100, 160, 255, 0.14); }
+        .auth-tab.active { background: linear-gradient(135deg, rgba(80, 140, 255, 0.25), rgba(40, 180, 200, 0.15)); color: #fff; box-shadow: inset 0 0 0 1.5px rgba(100, 180, 255, 0.3); border: 1px solid rgba(100, 180, 255, 0.3); }
+        .auth-secret-trigger { position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; background: rgba(255,255,255,0.02); border-radius: 50%; border: 1px solid rgba(255,255,255,0.08); cursor: pointer; }
+        .auth-secret-trigger:hover { background: rgba(255,255,255,0.08); }
+        .admin-panel-card { width: min(980px, 100%); max-height: calc(100vh - 40px); overflow: hidden; }
+        .login-history-card { width: min(520px, 100%); }
+        .admin-panel-content, .login-history-content { padding: 24px; display: grid; gap: 20px; }
+        .panel-body { display: grid; gap: 18px; grid-template-columns: 1fr; }
+        .admin-table, .history-table { background: linear-gradient(135deg, rgba(80, 140, 255, 0.08), rgba(30, 180, 200, 0.05)); border: 1px solid rgba(100, 160, 255, 0.15); border-radius: 18px; padding: 20px; max-height: 320px; overflow-y: auto; }
+        .admin-table h3, .history-table h3 { margin-top: 0; margin-bottom: 14px; color: #6ab4ff; font-size: 1.1rem; font-weight: 700; letter-spacing: 0.5px; }
+        .history-entry { padding: 12px 0; border-bottom: 1px solid rgba(100, 160, 255, 0.1); display: flex; justify-content: space-between; align-items: flex-start; }
+        .history-entry:last-child { border-bottom: none; }
+        .history-user { color: #e8f4ff; font-weight: 700; }
+        .history-time { color: #7fa8d9; font-size: 0.85rem; }
+        .history-type { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; margin-top: 4px; }
+        .history-type.login { background: rgba(100, 160, 255, 0.2); color: #6ab4ff; }
+        .history-type.register { background: rgba(74, 158, 255, 0.2); color: #4a9eff; }
+        .history-type.admin { background: rgba(255, 184, 108, 0.2); color: #ffb86c; }
+        .history-type.guest { background: rgba(154, 197, 255, 0.2); color: #9ac5ff; }
+        .admin-item { padding: 13px 0; border-bottom: 1px solid rgba(100, 160, 255, 0.1); }
+        .admin-item:last-child { border-bottom: none; }
+        .admin-item strong { color: #e8f4ff; font-weight: 700; }
+        .admin-item .admin-tag { display: inline-block; background: linear-gradient(135deg, #ffb86c, #ff9a3d); color: #1a1a2e; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; margin-left: 8px; }
+        .admin-item .admin-meta { color: #7fa8d9; font-size: 0.87rem; margin-top: 5px; }
+        .admin-close-btn { background: linear-gradient(135deg, #c83232, #8b0000); color: #fff; }
+        .admin-close-btn:hover { box-shadow: 0 12px 30px rgba(200, 50, 50, 0.3); }
+        .admin-btn { background: linear-gradient(135deg, #4a9eff, #20d9c0); color: #fff; }
+        .admin-btn:hover { box-shadow: 0 12px 30px rgba(50, 130, 255, 0.3); }
+        .stats-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 8px 0 16px 0; }
+        .stat-badge { background: linear-gradient(135deg, rgba(50, 120, 255, 0.15), rgba(30, 180, 200, 0.1)); border: 1px solid rgba(100, 160, 255, 0.2); border-radius: 12px; padding: 12px; text-align: center; }
+        .stat-number { font-size: 1.4rem; font-weight: 700; color: #4a9eff; }
+        .stat-label { font-size: 0.8rem; color: #8ab4f8; margin-top: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        @media (max-width: 640px) { .auth-card, .admin-card, .admin-panel-card, .login-history-card { width: 100%; }
+            .auth-footer { flex-direction: column; align-items: stretch; }
+            .history-entry { flex-direction: column; gap: 6px; }
+        }
+        /* Settings Panel */
+        .settings-modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(5, 15, 35, 0.95); z-index: 100000; padding: 18px; backdrop-filter: blur(2px); }
+        .settings-card { width: min(620px, 100%); max-height: calc(100vh - 40px); background: linear-gradient(135deg, rgba(18, 35, 70, 0.99), rgba(12, 22, 45, 0.99)); border: 1px solid rgba(80, 160, 255, 0.22); border-radius: 28px; box-shadow: 0 40px 120px rgba(0, 80, 200, 0.15); overflow: hidden; display: flex; flex-direction: column; }
+        .settings-header { padding: 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(100, 160, 255, 0.1); }
+        .settings-title { margin: 0; font-size: 1.4rem; color: #fff; }
+        .settings-body { padding: 20px; overflow-y: auto; display: grid; gap: 18px; flex: 1; }
+        .settings-group { background: rgba(80, 140, 255, 0.08); border: 1px solid rgba(100, 160, 255, 0.15); border-radius: 14px; padding: 14px; display: grid; gap: 10px; }
+        .settings-group-title { font-weight: 700; color: #6ab4ff; font-size: 0.95rem; letter-spacing: 0.5px; }
+        .settings-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; gap: 12px; }
+        .settings-label { color: #c5d8f1; font-size: 0.95rem; flex: 1; }
+        .settings-control { display: flex; gap: 8px; align-items: center; }
+        .settings-slider { width: 100px; }
+        .settings-toggle { position: relative; width: 48px; height: 24px; background: rgba(255,255,255,0.1); border-radius: 12px; border: 1px solid rgba(100, 160, 255, 0.2); cursor: pointer; transition: all 0.3s ease; }
+        .settings-toggle.active { background: #4a9eff; }
+        .settings-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: #fff; border-radius: 50%; transition: left 0.3s ease; }
+        .settings-toggle.active::after { left: 26px; }
+        .settings-footer { padding: 16px; border-top: 1px solid rgba(100, 160, 255, 0.1); display: flex; gap: 12px; justify-content: flex-end; }
+        .close-btn { background: linear-gradient(135deg, #c83232, #8b0000); color: #fff; padding: 10px 18px; border-radius: 10px; border: none; cursor: pointer; font-weight: 600; }
+        /* Minimap */
+        #minimap { position: fixed; bottom: 100px; right: 12px; width: 140px; height: 140px; background: rgba(0, 0, 0, 0.6); border: 2px solid #4a9eff; border-radius: 10px; z-index: 9997; }
+        #minimap canvas { width: 100%; height: 100%; display: block; }
+        /* Progress Bar */
+        .progress-container { position: fixed; top: 12px; right: 12px; z-index: 9997; background: rgba(0, 0, 0, 0.5); padding: 12px; border-radius: 10px; border: 1px solid rgba(100, 160, 255, 0.2); min-width: 200px; }
+        .progress-title { font-size: 0.9rem; color: #6ab4ff; font-weight: 700; margin-bottom: 8px; }
+        .progress-bar { width: 100%; height: 6px; background: rgba(100, 160, 255, 0.2); border-radius: 3px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #4a9eff, #20d9c0); width: 0%; transition: width 0.3s ease; }
+        .progress-text { font-size: 0.75rem; color: #9ac5ff; margin-top: 4px; }
+        /* Help Modal */
+        .help-modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(5, 15, 35, 0.95); z-index: 100000; padding: 18px; backdrop-filter: blur(2px); }
+        .help-card { width: min(700px, 100%); max-height: calc(100vh - 40px); background: linear-gradient(135deg, rgba(18, 35, 70, 0.99), rgba(12, 22, 45, 0.99)); border: 1px solid rgba(80, 160, 255, 0.22); border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; }
+        .help-header { padding: 20px; border-bottom: 1px solid rgba(100, 160, 255, 0.1); display: flex; justify-content: space-between; align-items: center; }
+        .help-title { margin: 0; font-size: 1.3rem; color: #fff; }
+        .help-body { padding: 20px; overflow-y: auto; flex: 1; display: grid; gap: 12px; }
+        .help-section { background: rgba(80, 140, 255, 0.08); border-left: 3px solid #4a9eff; padding: 12px; border-radius: 8px; }
+        .help-section-title { color: #6ab4ff; font-weight: 700; font-size: 0.95rem; margin-bottom: 6px; }
+        .help-section-content { color: #c5d8f1; font-size: 0.9rem; line-height: 1.5; }
+        .help-section code { background: rgba(0, 0, 0, 0.3); padding: 2px 6px; border-radius: 4px; color: #ffb86c; font-family: monospace; }
+        /* Performance Monitor */
+        #perf-monitor { position: fixed; top: 60px; left: 12px; z-index: 9997; background: rgba(0, 0, 0, 0.5); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(100, 160, 255, 0.2); color: #9ac5ff; font-family: monospace; font-size: 0.8rem; display: none; }
+        /* Search Bar */
+        .search-container { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 9997; }
+        .search-input { padding: 10px 16px; background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(100, 160, 255, 0.3); border-radius: 8px; color: #fff; min-width: 250px; outline: none; transition: border-color 0.2s; }
+        .search-input::placeholder { color: #7fa8d9; }
+        .search-input:focus { border-color: #4a9eff; }
+        .search-results { position: absolute; top: 100%; left: 0; right: 0; max-height: 250px; overflow-y: auto; background: rgba(0, 0, 0, 0.9); border: 1px solid rgba(100, 160, 255, 0.3); border-radius: 8px; margin-top: 4px; display: none; }
+        .search-results.show { display: block; }
+        .search-result { padding: 10px 12px; color: #c5d8f1; cursor: pointer; border-bottom: 1px solid rgba(100, 160, 255, 0.1); transition: background 0.2s; }
+        .search-result:hover { background: rgba(100, 160, 255, 0.15); }
+        /* Toast Notifications */
+        .toast { position: fixed; bottom: 24px; left: 24px; z-index: 9999; background: rgba(0, 0, 0, 0.8); color: #fff; padding: 12px 16px; border-radius: 8px; border-left: 4px solid #4a9eff; animation: slide-in 0.3s ease; max-width: 300px; font-family: Arial, sans-serif; }
+        @keyframes slide-in { from { transform: translateX(-100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
+    <script>
+        // Global check to see if A-Frame actually loaded
+        if (typeof AFRAME === 'undefined') {
+            alert("A-Frame script not found! Make sure 'aframe.min.js' is in the same folder as this HTML file.");
+        }
+
+        // Check if the page is opened via file:// protocol
+        if (window.location.protocol === 'file:') {
+            console.warn('Running via file:// protocol.');
+            window.addEventListener('load', () => {
+                const scene = document.querySelector('a-scene');
+                scene.addEventListener('asset-load-error', (e) => {
+                    const msg = "Brave or Chrome may be blocking local files.\n\n" +
+                                "To fix this, open this folder in Firefox or run a local server, or launch Brave with:\n" +
+                                "brave-browser --allow-file-access-from-files " + window.location.pathname;
+                    console.error(msg);
+                    const div = document.createElement('div');
+                    div.style.position = 'fixed';
+                    div.style.top = '10px';
+                    div.style.left = '10px';
+                    div.style.padding = '20px';
+                    div.style.background = 'rgba(255,0,0,0.9)';
+                    div.style.color = 'white';
+                    div.style.zIndex = '9999';
+                    div.style.whiteSpace = 'pre-wrap';
+                    div.innerText = msg;
+                    document.body.appendChild(div);
+                });
+            });
+        }
+        // Custom component to display information when a hotspot is clicked
+        // Shows text in the in-scene text panel and opens an overlay with a larger image
+        AFRAME.registerComponent('hotspot-listener', {
+            schema: {
+                description: {type: 'string', default: ''},
+                imageSelector: {type: 'string', default: ''}
+            },
+            init: function () {
+                this.infoPanel = document.querySelector('#info-text');
+                this.overlay = document.querySelector('#info-overlay');
+                this.overlayImage = this.overlay ? this.overlay.querySelector('img') : null;
+                this.overlayText = this.overlay ? this.overlay.querySelector('.info-desc') : null;
+
+                this.el.addEventListener('click', () => {
+                    // Mark site as visited based on description
+                    const desc = this.data.description || '';
+                    if (desc.includes('Nyero 1')) markSiteVisited('nyero-1');
+                    else if (desc.includes('Nyero 2')) markSiteVisited('nyero-2');
+                    else if (desc.includes('Nyero 3')) markSiteVisited('nyero-3');
+                    else if (desc.includes('Nyero 4')) markSiteVisited('nyero-4');
+                    else if (desc.includes('Nyero 5')) markSiteVisited('nyero-5');
+
+                    // Update in-scene text
+                    if (this.infoPanel) {
+                        this.infoPanel.setAttribute('value', this.data.description);
+                    }
+
+                    // Open overlay with image (if provided). Query overlay at click
+                    const overlay = document.querySelector('#info-overlay');
+                    const overlayImage = overlay ? overlay.querySelector('img') : null;
+                    const overlayText = overlay ? overlay.querySelector('.info-desc') : null;
+                    if (overlay) {
+                        if (this.data.imageSelector) {
+                            const asset = document.querySelector(this.data.imageSelector);
+                            if (asset) {
+                                const src = asset.getAttribute('src') || asset.src || null;
+                                if (src && overlayImage) overlayImage.src = src;
+                            }
+                        }
+                        if (overlayText) overlayText.textContent = this.data.description || '';
+                        overlay.style.display = 'flex';
+                    }
+                });
+
+                // Hover feedback
+                this.el.addEventListener('mouseenter', () => {
+                    this.el.setAttribute('scale', '1.3 1.3 1.3');
+                });
+                this.el.addEventListener('mouseleave', () => {
+                    this.el.setAttribute('scale', '1 1 1');
+                });
+            }
+        });
+
+        // Smooth wheel scrolling component: accumulates wheel deltas and moves the rig smoothly
+        AFRAME.registerComponent('wheel-smooth', {
+            schema: { speed: {type: 'number', default: 0.12}, damping: {type: 'number', default: 0.08} },
+            init: function(){
+                this.target = 0;
+                this.velocity = 0;
+                this.onWheel = (e)=>{ e.preventDefault(); this.target += (e.deltaY>0?1:-1) * this.data.speed; };
+                window.addEventListener('wheel', this.onWheel, {passive:false});
+            },
+            remove: function(){ window.removeEventListener('wheel', this.onWheel); },
+            tick: function(time, delta){
+                const rig = this.el;
+                const camera = rig.querySelector('[camera]');
+                if (!camera) return;
+                // Smooth towards target
+                this.velocity += (this.target - this.velocity) * this.data.damping;
+                // Apply movement in camera forward direction
+                if (Math.abs(this.velocity) > 0.0001){
+                    const forward = new THREE.Vector3(0,0,-1);
+                    forward.applyQuaternion(camera.object3D.quaternion);
+                    forward.y = 0; forward.normalize();
+                    forward.multiplyScalar(this.velocity * (delta/16.666));
+                    rig.object3D.position.add(forward);
+                }
+                // decay target slowly
+                this.target *= 0.92;
+            }
+        });
+
+        AFRAME.registerComponent('route-pulse', {
+            schema: {
+                color: {type: 'color', default: '#ffd54f'},
+                min: {type: 'number', default: 0.8},
+                max: {type: 'number', default: 1.4},
+                speed: {type: 'number', default: 1200}
+            },
+            init: function(){
+                this.startTime = Date.now();
+                if (this.el.getAttribute('material')) {
+                    this.el.setAttribute('material', 'emissive', this.data.color);
+                }
+            },
+            tick: function(){
+                const age = (Date.now() - this.startTime) % this.data.speed;
+                const t = Math.abs(Math.sin((age / this.data.speed) * Math.PI));
+                const scale = this.data.min + (this.data.max - this.data.min) * t;
+                const opacity = 0.5 + 0.5 * t;
+                this.el.object3D.scale.set(scale, scale, scale);
+                if (this.el.getAttribute('material')) {
+                    this.el.setAttribute('material', 'opacity', opacity);
+                }
+            }
+        });
+
+        AFRAME.registerComponent('route-manager', {
+            schema: { threshold: { type: 'number', default: 3 } },
+            init: function () {
+                this.targets = [
+                    { id: 'route-nyero1', name: 'Nyero 1 Shelter', pos: new THREE.Vector3(-8, 1.2, 0) },
+                    { id: 'route-sun', name: 'Nyero 2 Shelter', pos: new THREE.Vector3(5, 1.2, -8) },
+                    { id: 'route-canoe', name: 'Nyero 3 Shelter', pos: new THREE.Vector3(-12, 1.2, 10) },
+                    { id: 'route-abstract', name: 'Nyero 4 Shelter', pos: new THREE.Vector3(10, 1.2, 8) },
+                    { id: 'route-handprints', name: 'Nyero 5 Shelter', pos: new THREE.Vector3(-5, 1.2, 15) },
+                    { id: 'route-circles', name: 'Nyero 6 Shelter', pos: new THREE.Vector3(-15, 1.2, -5) }
+                ];
+                this.current = 0;
+                this.label = document.getElementById('route-target-label');
+                this.pointerLabel = document.getElementById('route-pointer-label');
+                this.updateRoute();
+            },
+            updateRoute: function () {
+                const currentTarget = this.targets[this.current];
+                const text = currentTarget ? 'Follow the pointer to ' + currentTarget.name : 'Destination reached!';
+                if (this.label) {
+                    this.label.setAttribute('value', text);
+                }
+                if (this.pointerLabel) {
+                    this.pointerLabel.setAttribute('value', currentTarget ? 'To ' + currentTarget.name + ' rock painting' : 'Done');
+                }
+                window.currentRouteTarget = currentTarget ? currentTarget.pos : null;
+            },
+            tick: function () {
+                const cameraRig = document.querySelector('#camera-rig');
+                if (!cameraRig) return;
+                const position = cameraRig.object3D.position;
+                const target = this.targets[this.current];
+                if (!target) return;
+                const distance = position.distanceTo(target.pos);
+                if (distance < this.data.threshold) {
+                    this.current = Math.min(this.current + 1, this.targets.length);
+                    this.updateRoute();
+                }
+            }
+        });
+
+        AFRAME.registerComponent('route-pointer', {
+            init: function () {
+                this.label = this.el.querySelector('#route-pointer-label');
+            },
+            tick: function () {
+                const targetPos = window.currentRouteTarget;
+                if (!targetPos) {
+                    this.el.setAttribute('visible', false);
+                    return;
+                }
+                this.el.setAttribute('visible', true);
+                const worldTarget = new THREE.Vector3(targetPos.x, targetPos.y, targetPos.z);
+                const worldPos = new THREE.Vector3();
+                this.el.object3D.getWorldPosition(worldPos);
+                this.el.object3D.lookAt(worldTarget);
+                if (this.label) {
+                    this.label.setAttribute('value', this.label.getAttribute('value'));
+                }
+            }
+        });
+
+        // Particle emitter using InstancedMesh when available (fallback to meshes)
+        AFRAME.registerComponent('particle-emitter', {
+            schema: {
+                color: { type: 'color', default: '#39ff14' },
+                count: { type: 'int', default: 30 },
+                areaRadius: { type: 'number', default: 0.25 },
+                speed: { type: 'number', default: 0.02 },
+                size: { type: 'number', default: 0.05 },
+                lifetime: { type: 'int', default: 2200 }
+            },
+            init: function () {
+                this._useInstancing = typeof THREE.InstancedMesh !== 'undefined';
+                this._dummy = new THREE.Object3D();
+                if (this._useInstancing) this._initInstanced(); else this._initMeshes();
+            },
+            _initInstanced: function () {
+                const geom = new THREE.SphereGeometry(this.data.size, 6, 6);
+                const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(this.data.color), transparent: true, opacity: 0.95 });
+                const count = this.data.count;
+                this._inst = new THREE.InstancedMesh(geom, mat, count);
+                this._inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+                this.el.object3D.add(this._inst);
+                this._states = [];
+                for (let i = 0; i < count; i++) {
+                    const r = Math.random() * this.data.areaRadius;
+                    const ang = Math.random() * Math.PI * 2;
+                    const pos = new THREE.Vector3(Math.cos(ang) * r, Math.random() * 0.1, Math.sin(ang) * r);
+                    const vel = new THREE.Vector3((Math.random() - 0.5) * this.data.speed, Math.random() * this.data.speed * 1.2, (Math.random() - 0.5) * this.data.speed);
+                    const life = Math.random() * this.data.lifetime;
+                    this._states.push({ pos, vel, life, scale: 1 + Math.random() * 0.6 });
+                    this._updateInstanceMatrix(i);
+                }
+            },
+            _updateInstanceMatrix: function (i) {
+                const s = this._states[i];
+                this._dummy.position.copy(s.pos);
+                this._dummy.scale.setScalar(s.scale);
+                this._dummy.updateMatrix();
+                this._inst.setMatrixAt(i, this._dummy.matrix);
+                this._inst.instanceMatrix.needsUpdate = true;
+            },
+            _initMeshes: function () {
+                this._meshes = [];
+                const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(this.data.color), transparent: true, opacity: 0.95 });
+                for (let i = 0; i < this.data.count; i++) {
+                    const geom = new THREE.SphereGeometry(this.data.size, 6, 6);
+                    const m = new THREE.Mesh(geom, mat.clone());
+                    const r = Math.random() * this.data.areaRadius;
+                    const ang = Math.random() * Math.PI * 2;
+                    m.position.set(Math.cos(ang) * r, Math.random() * 0.1, Math.sin(ang) * r);
+                    m.userData = { vel: new THREE.Vector3((Math.random() - 0.5) * this.data.speed, Math.random() * this.data.speed * 1.2, (Math.random() - 0.5) * this.data.speed), life: Math.random() * this.data.lifetime };
+                    this.el.object3D.add(m);
+                    this._meshes.push(m);
+                }
+            },
+            tick: function (time, delta) {
+                const dt = delta;
+                if (this._useInstancing && this._inst) {
+                    for (let i = 0; i < this._states.length; i++) {
+                        const s = this._states[i];
+                        s.life -= dt;
+                        s.pos.addScaledVector(s.vel, dt / 16.666);
+                        if (s.life <= 0) {
+                            s.life = this.data.lifetime + Math.random() * 400;
+                            const r = Math.random() * this.data.areaRadius;
+                            const ang = Math.random() * Math.PI * 2;
+                            s.pos.set(Math.cos(ang) * r, 0, Math.sin(ang) * r);
+                            s.vel.set((Math.random() - 0.5) * this.data.speed, Math.random() * this.data.speed * 1.2, (Math.random() - 0.5) * this.data.speed);
+                            s.scale = 1 + Math.random() * 0.6;
+                        }
+                        this._updateInstanceMatrix(i);
+                    }
+                } else if (this._meshes) {
+                    for (let i = 0; i < this._meshes.length; i++) {
+                        const m = this._meshes[i];
+                        m.userData.life -= dt;
+                        m.position.addScaledVector(m.userData.vel, dt / 16.666);
+                        const alpha = Math.max(0, Math.min(1, m.userData.life / this.data.lifetime));
+                        if (m.material) m.material.opacity = alpha * 0.9;
+                        if (m.userData.life <= 0) {
+                            m.userData.life = this.data.lifetime + Math.random() * 400;
+                            m.position.set((Math.random() - 0.5) * this.data.areaRadius, 0, (Math.random() - 0.5) * this.data.areaRadius);
+                            m.userData.vel.set((Math.random() - 0.5) * this.data.speed, Math.random() * this.data.speed * 1.2, (Math.random() - 0.5) * this.data.speed);
+                            if (m.material) m.material.opacity = 0.95;
+                        }
+                    }
+                }
+            }
+        });
+
+        // Simple audio control helper
+        function toggleAudio(){
+            const el = document.querySelector('a-entity[sound]');
+            const asset = document.getElementById('savanna-ambient');
+            const btn = document.getElementById('audio-toggle');
+            // prefer procedural ambient when created
+            if (window._ambientCtx && window._ambientMaster){
+                const muted = btn && btn.getAttribute('data-muted') === 'true';
+                if (muted){ window._ambientMaster.gain.value = 0.02; if(btn) { btn.setAttribute('data-muted','false'); btn.textContent='Mute'; } }
+                else { window._ambientMaster.gain.value = 0; if(btn) { btn.setAttribute('data-muted','true'); btn.textContent='Unmute'; } }
+                return;
+            }
+            if (!el || !asset) return;
+            const muted = el.getAttribute('data-muted') === 'true';
+            if (muted){
+                el.setAttribute('sound','volume:0.5');
+                el.setAttribute('data-muted','false');
+                if(btn) { btn.textContent='Mute'; btn.setAttribute('data-muted','false'); }
+            } else {
+                el.setAttribute('sound','volume:0');
+                el.setAttribute('data-muted','true');
+                if(btn) { btn.textContent='Unmute'; btn.setAttribute('data-muted','true'); }
+            }
+        }
+
+        window.addEventListener('load', async () => {
+            const btn = document.getElementById('audio-toggle');
+            const soundEl = document.querySelector('a-entity[sound]');
+            const soundAsset = document.getElementById('savanna-ambient');
+            if (!btn) return;
+            const hasAudioSrc = soundAsset && soundAsset.getAttribute('src');
+            const useFallback = async () => {
+                try { createProceduralAmbient(); btn.textContent = 'Mute'; }
+                catch(e){ btn.disabled = true; btn.textContent = 'Audio unavailable'; btn.style.opacity = '0.55'; btn.style.cursor = 'not-allowed'; }
+            };
+            if (!soundEl || !soundAsset || !hasAudioSrc) {
+                await useFallback();
+                return;
+            }
+            if (window.location.protocol.startsWith('http')) {
+                try {
+                    const response = await fetch(soundAsset.getAttribute('src'), { method: 'HEAD' });
+                    if (!response.ok) throw new Error('Audio file not available');
+                    btn.textContent = 'Mute';
+                } catch (err) {
+                    await useFallback();
+                }
+            } else {
+                await useFallback();
+            }
+        });
+
+        // Procedural ambient generator (fallback if no audio file provided)
+        function createProceduralAmbient(){
+            if(window._ambientCreated) return; window._ambientCreated = true;
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if(!AudioContext) throw new Error('WebAudio not supported');
+            const ctx = new AudioContext();
+            const master = ctx.createGain(); master.gain.value = 0.02; master.connect(ctx.destination);
+            window._ambientCtx = ctx; window._ambientMaster = master;
+            // create several detuned low oscillators to simulate ambient hum
+            const freqs = [110, 138.59, 174.61];
+            freqs.forEach((f,i)=>{
+                const o = ctx.createOscillator(); o.type='sine'; o.frequency.value = f + (Math.random()-0.5)*4;
+                const g = ctx.createGain(); g.gain.value = 0.01 + Math.random()*0.02;
+                const lfo = ctx.createOscillator(); lfo.frequency.value = 0.05 + Math.random()*0.08; const lg = ctx.createGain(); lg.gain.value = 0.005;
+                lfo.connect(lg); lg.connect(g.gain);
+                o.connect(g); g.connect(master);
+                o.start(); lfo.start();
+            });
+            // gentle filtered noise
+            const bufferSize = 2 * ctx.sampleRate;
+            const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) output[i] = (Math.random()*2-1)*0.2;
+            const noise = ctx.createBufferSource(); noise.buffer = noiseBuffer; noise.loop = true;
+            const nf = ctx.createBiquadFilter(); nf.type = 'lowpass'; nf.frequency.value = 800; nf.Q.value = 0.7;
+            const ng = ctx.createGain(); ng.gain.value = 0.02;
+            noise.connect(nf); nf.connect(ng); ng.connect(master); noise.start();
+            // resume context on user interaction if suspended
+            document.addEventListener('click', ()=>{ if(ctx.state==='suspended') ctx.resume(); }, { once: true });
+            // expose to toggleAudio by creating an a-entity sound-like placeholder
+            const fake = document.createElement('a-entity'); fake.setAttribute('id','procedural-ambient'); fake.setAttribute('data-audio-ctx','true'); document.body.appendChild(fake);
+        }
+
+        // Component to teleport the player rig to a specific position
+        AFRAME.registerComponent('teleport-to', {
+            schema: {
+                pos: {type: 'vec3'}
+            },
+            init: function () {
+                this.el.addEventListener('click', () => {
+                    const rig = document.querySelector('#camera-rig');
+                    if (rig) rig.setAttribute('position', this.data.pos);
+                });
+            }
+        });
+
+        // Component to constrain movement within a rectangular boundary
+        AFRAME.registerComponent('movement-limit', {
+            schema: {
+                maxX: {type: 'number', default: 23},
+                maxZ: {type: 'number', default: 41},
+                eyeHeight: {type: 'number', default: 1.6},
+                collisionBuffer: {type: 'number', default: 0.3}
+            },
+            init: function () {
+                this.raycaster = new THREE.Raycaster();
+                this.downVec = new THREE.Vector3(0, -1, 0);
+                this.origin = new THREE.Vector3();
+                this.worldPos = new THREE.Vector3();
+                this.rig = document.querySelector('#camera-rig');
+            },
+            tick: function () {
+                const el = this.el;
+                const pos = el.object3D.position;
+                if (!this.rig) return;
+                el.object3D.getWorldPosition(this.worldPos);
+                
+                // Clamp movement to boundary (3 meters beyond scene area)
+                pos.x = THREE.MathUtils.clamp(pos.x, -this.data.maxX, this.data.maxX);
+                pos.z = THREE.MathUtils.clamp(pos.z, -this.data.maxZ, this.data.maxZ);
+                
+                this.origin.set(this.worldPos.x, 100, this.worldPos.z);
+                this.raycaster.set(this.origin, this.downVec);
+                
+                if (!this.rockEl) {
+                    this.rockEl = document.querySelector('#nyero-model');
+                }
+                
+                if (this.rockEl && this.rockEl.object3D) {
+                    const intersections = this.raycaster.intersectObject(this.rockEl.object3D, true);
+                    if (intersections.length > 0) {
+                        // Found collision with rock surface
+                        const surfaceY = intersections[0].point.y;
+                        // Add collision buffer to prevent sinking
+                        const targetY = surfaceY - this.rig.object3D.position.y + this.data.eyeHeight + this.data.collisionBuffer;
+                        // Smoothly move up if hitting rock, but allow moving down
+                        if (targetY > pos.y) {
+                            pos.y += (targetY - pos.y) * 0.2;
+                        }
+                    }
+                }
+                
+                // Ensure minimum height
+                pos.y = Math.max(pos.y, 0);
+            }
+        });
+
+        // Optional mouse wheel support for moving forward/backward
+        AFRAME.registerComponent('wheel-move', {
+            schema: {
+                speed: {type: 'number', default: 0.05}
+            },
+            init: function () {
+                this.onWheel = this.onWheel.bind(this);
+                window.addEventListener('wheel', this.onWheel, {passive: false});
+            },
+            remove: function () {
+                window.removeEventListener('wheel', this.onWheel);
+            },
+            onWheel: function (event) {
+                event.preventDefault();
+                const rig = this.el;
+                const camera = rig.querySelector('[camera]');
+                if (!camera) return;
+                const forward = new THREE.Vector3(0, 0, -1);
+                forward.applyQuaternion(camera.object3D.quaternion);
+                forward.multiplyScalar((event.deltaY > 0 ? 1 : -1) * this.data.speed);
+                rig.object3D.position.add(forward);
+            }
+        });
+    </script>
+</head>
+<body class="not-signed-in">
+    <!-- Authentication modal (register / login) -->
+    <div id="auth-modal" class="auth-modal" style="display: none;">
+        <div class="auth-card" data-auth-mode="login">
+            <div class="auth-content">
+                <div class="auth-header">
+                    <div>
+                        <h2 class="auth-title">Welcome back</h2>
+                        <p class="auth-subtitle">Sign in with your account to continue exploring.</p>
+                    </div>
+                    <button id="admin-secret-trigger" type="button" class="auth-secret-trigger" aria-label="Reveal admin login"></button>
+                </div>
+                <div class="auth-tabbar">
+                    <div id="auth-tab-register" class="auth-tab">Create account</div>
+                    <div id="auth-tab-login" class="auth-tab active">Login</div>
+                </div>
+                <div id="auth-message" class="auth-status"></div>
+                <div class="auth-row">
+                    <input id="auth-username" class="auth-input" placeholder="Choose a username" autocomplete="username" />
+                </div>
+                <div class="auth-row">
+                    <input id="auth-password" class="auth-input" type="password" placeholder="Choose a password" autocomplete="new-password" />
+                </div>
+                <div class="auth-row auth-confirm-row" style="display:none;">
+                    <input id="auth-confirm" class="auth-input" type="password" placeholder="Confirm password" autocomplete="new-password" />
+                </div>
+                <div class="auth-row" style="gap: 12px;">
+                    <div id="username-hint" class="auth-note">3-20 characters: letters, numbers, . _ -</div>
+                    <div id="pwd-strength" class="auth-note" style="text-align:right;">Password: —</div>
+                </div>
+                <div class="auth-row auth-actions">
+                    <label class="auth-note" style="display:flex;align-items:center;gap:8px;">
+                        <input id="auth-remember" type="checkbox" style="width:14px;height:14px;" />
+                        Remember me
+                    </label>
+                    <button id="btn-guest" type="button" class="auth-button auth-ghost compact">Continue as Guest</button>
+                </div>
+                <div class="auth-row">
+                    <button id="btn-submit" type="button" class="auth-button auth-primary wide">Create account</button>
+                </div>
+                <div class="auth-row auth-actions" style="padding-top: 14px; border-top: 1px solid rgba(100, 160, 255, 0.1); margin-top: 8px;">
+                    <span class="auth-note">Already registered? <span id="auth-switch-link" class="auth-link">Sign in here</span></span>
+                    <button id="admin-login-trigger" type="button" class="auth-button auth-secondary compact">Admin Login</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="admin-login-modal" class="admin-modal" style="display:none;">
+        <div class="admin-card">
+            <div class="auth-content">
+                <div class="auth-header">
+                    <div>
+                        <h2 class="auth-title">Admin login</h2>
+                        <p class="auth-subtitle">Only administrators can access this secure panel.</p>
+                    </div>
+                </div>
+                <div id="admin-message" class="auth-status"></div>
+                <div class="admin-row">
+                    <input id="admin-username" class="auth-input" placeholder="Admin username" autocomplete="username" />
+                    <input id="admin-password" class="auth-input" type="password" placeholder="Admin password" autocomplete="current-password" />
+                </div>
+                <div class="auth-row" style="justify-content:flex-end;">
+                    <button id="btn-admin-cancel" type="button" class="auth-button auth-secondary" style="width:auto;">Cancel</button>
+                    <button id="btn-admin-login" type="button" class="auth-button auth-primary" style="width:auto;">Unlock</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="admin-panel-modal" class="admin-panel-modal" style="display:none;">
+        <div class="admin-panel-card">
+            <div class="admin-panel-content">
+                <div class="panel-header">
+                    <div>
+                        <h2 class="panel-title">Admin Panel</h2>
+                        <p class="panel-subtitle">Registered users and login history.</p>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <button id="admin-close-panel" type="button" class="auth-button admin-close-btn" onclick="closeAdminPanel()" style="width:auto;">Close panel</button>
+                        <button id="admin-logout-panel" type="button" class="auth-button admin-close-btn" onclick="logoutUser()" style="width:auto;">Logout</button>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="admin-table">
+                        <h3>Registered Users</h3>
+                        <div id="admin-user-list"></div>
+                    </div>
+                    <div class="history-table">
+                        <h3>Login History</h3>
+                        <div id="admin-login-history"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="login-history-modal" class="login-history-modal" style="display:none;">
+        <div class="login-history-card">
+            <div class="login-history-content">
+                <div class="panel-header">
+                    <div>
+                        <h2 class="panel-title">Welcome, <span id="history-username">User</span>!</h2>
+                        <p class="panel-subtitle">Here's the latest login activity.</p>
+                    </div>
+                    <button id="history-logout-btn" type="button" class="auth-button admin-close-btn" onclick="logoutUser()" style="width:auto;">Logout</button>
+                </div>
+                <div class="history-table">
+                    <h3>Recent Logins</h3>
+                    <div id="login-history-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <a-scene tabindex="0" loading-screen="dotsColor: #7c5c42; backgroundColor: #1a1a1a"
+             raycaster="objects: .clickable"
+             fog="type: exponential; color: #87CEEB; density: 0.015"
+             shadow="type: pcfsoft">
+        <a-assets>
+            <a-asset-item id="nyero" src="nyero_site.glb"></a-asset-item>
+            <!-- Optional ambient audio: add savanna-ambient.mp3 to project root to enable -->
+            <audio id="savanna-ambient" src="savanna-ambient.mp3"></audio>
+            <img id="sky-image" src="sky_panorama.jpg">
+            <img id="painting-circles" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Crect width='256' height='256' fill='%23a89080'/%3E%3C!-- Authentic Nyero concentric circles ---%3E%3Ccircle cx='128' cy='100' r='85' fill='none' stroke='%23f5f5dc' stroke-width='12'/%3E%3Ccircle cx='128' cy='100' r='65' fill='none' stroke='%23f5f5dc' stroke-width='10'/%3E%3Ccircle cx='128' cy='100' r='45' fill='none' stroke='%23f5f5dc' stroke-width='8'/%3E%3Ccircle cx='128' cy='100' r='25' fill='%23f5f5dc'/%3E%3C!-- Acacia pod motif ---%3E%3Cpath d='M 60 200 Q 80 220 100 200 M 70 200 Q 80 215 90 200' stroke='%23e8dcc8' stroke-width='6' fill='none' stroke-linecap='round'/%3E%3Cpath d='M 156 200 Q 176 220 196 200 M 166 200 Q 176 215 186 200' stroke='%23e8dcc8' stroke-width='6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+            <img id="painting-sun" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Crect width='256' height='256' fill='%23a89080'/%3E%3C!-- Red ochre concentric circles ---%3E%3Ccircle cx='128' cy='90' r='90' fill='none' stroke='%23c85a3a' stroke-width='14'/%3E%3Ccircle cx='128' cy='90' r='70' fill='none' stroke='%23c85a3a' stroke-width='12'/%3E%3Ccircle cx='128' cy='90' r='50' fill='none' stroke='%23c85a3a' stroke-width='10'/%3E%3Ccircle cx='128' cy='90' r='30' fill='%23c85a3a'/%3E%3C!-- Canoe/acacia pod design ---%3E%3Cpath d='M 50 200 Q 128 240 206 200' stroke='%23d46a4a' stroke-width='8' fill='none' stroke-linecap='round'/%3E%3Cpath d='M 70 210 L 186 210' stroke='%23c85a3a' stroke-width='5' fill='none'/%3E%3C/svg%3E">
+            <img id="painting-boat" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Crect width='256' height='256' fill='%23a89080'/%3E%3C!-- Double curved designs and compartments ---%3E%3Cpath d='M 40 80 Q 128 40 216 80' stroke='%23f5f5dc' stroke-width='10' fill='none' stroke-linecap='round'/%3E%3Cpath d='M 40 100 Q 128 60 216 100' stroke='%23f5f5dc' stroke-width='10' fill='none' stroke-linecap='round'/%3E%3C!-- Concentric circles ---%3E%3Ccircle cx='128' cy='170' r='60' fill='none' stroke='%23f5f5dc' stroke-width='10'/%3E%3Ccircle cx='128' cy='170' r='40' fill='none' stroke='%23f5f5dc' stroke-width='8'/%3E%3Ccircle cx='128' cy='170' r='20' fill='%23f5f5dc'/%3E%3C/svg%3E">
+            <img id="grass-texture" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%234c6b2c'/%3E%3Cpath d='M0 48 L8 24 L16 48 L24 24 L32 48 L40 24 L48 48 L56 24 L64 48' fill='none' stroke='%2378a05a' stroke-width='4'/%3E%3C/svg%3E">
+        </a-assets>
+        <a-entity light="type: ambient; intensity: 0.4"></a-entity>
+        <a-entity light="type: directional; 
+                         castShadow: true; 
+                         intensity: 0.9; 
+                         color: #fff5d1;
+                         shadowCameraLeft: -30; shadowCameraBottom: -30; 
+                         shadowCameraRight: 30; shadowCameraTop: 30;
+                         shadowMapHeight: 2048; shadowMapWidth: 2048;
+                         shadowBias: -0.001" 
+                  position="-10 40 20"
+                  target="#nyero-model"></a-entity>
+        <a-plane position="0 -2.05 0" rotation="-90 0 0" width="500" height="500" 
+                 src="#grass-texture" repeat="50 50" color="#4B5320" shadow="receive: true"></a-plane>
+        <a-entity id="nyero-model" gltf-model="#nyero" position="0 -2 0" scale="8 8 8" shadow="cast: true; receive: true"></a-entity>
+        <a-entity id="savanna-sound" sound="src: #savanna-ambient; autoplay: true; loop: true; volume: 0.5; positional: false"></a-entity>
+        <a-text id="info-text" value="Use WASD/arrow keys on laptop, touch drag on mobile, and scroll or buttons to move. Tap hotspots to learn about the rock paintings carved onto the Nyero shelter surfaces." position="0 2.5 -3" align="center" color="#FFFFFF" width="4"></a-text>
+        <!-- Dynamic route guidance groups -->
+        <a-entity id="route-label" position="0 0 43">
+            <a-text id="route-target-label" value="Follow the pointer to the Nyero rock painting" color="#b0e0ff" align="center" width="3" position="0 2 0"></a-text>
+        </a-entity>
+        <a-entity id="route-nyero1" visible="false">
+            <a-entity position="0 0.1 35" rotation="90 0 0">
+                <a-cylinder route-pulse="color: #ffcc00; min: 0.9; max: 1.1; speed: 1200" height="1.4" radius="0.04" color="#ffcc00" opacity="0.85"></a-cylinder>
+                <a-cone route-pulse="color: #ffcc00; min: 0.9; max: 1.1; speed: 1200" height="0.4" radius-bottom="0.16" radius-top="0" color="#ffcc00" position="0 0.8 0"></a-cone>
+            </a-entity>
+            <a-entity position="0 0.1 28" rotation="90 0 0">
+                <a-box width="0.08" height="0.08" depth="3.5" color="#ffcc00" opacity="0.75"></a-box>
+            </a-entity>
+            <a-entity position="0 0.1 25" rotation="90 0 0">
+                <a-cylinder route-pulse="color: #ffcc00; min: 0.9; max: 1.1; speed: 1200" height="1.4" radius="0.04" color="#ffcc00" opacity="0.85"></a-cylinder>
+                <a-cone route-pulse="color: #ffcc00; min: 0.9; max: 1.1; speed: 1200" height="0.4" radius-bottom="0.16" radius-top="0" color="#ffcc00" position="0 0.8 0"></a-cone>
+            </a-entity>
+            <a-entity position="2 0.1 -3" look-at="#camera">
+                <a-box width="0.08" height="0.08" depth="0.9" color="#ffcc00" opacity="0.95"></a-box>
+                <a-cone height="0.35" radius-bottom="0.16" radius-top="0" color="#ffcc00" rotation="0 180 0" position="0 0 0.7"></a-cone>
+                <a-text value="Nyero 1" color="#fff" align="center" width="1.0" position="0 0.26 0"></a-text>
+            </a-entity>
+        </a-entity>
+        <a-entity id="route-sun" visible="false">
+            <a-entity position="-1 0.1 30" rotation="90 0 0">
+                <a-cylinder route-pulse="color: #75e1ff; min: 0.9; max: 1.1; speed: 1200" height="1.4" radius="0.04" color="#75e1ff" opacity="0.85"></a-cylinder>
+                <a-cone route-pulse="color: #75e1ff; min: 0.9; max: 1.1; speed: 1200" height="0.4" radius-bottom="0.16" radius-top="0" color="#75e1ff" position="0 0.8 0"></a-cone>
+            </a-entity>
+            <a-entity position="-1 0.1 28" rotation="90 0 0">
+                <a-box width="0.08" height="0.08" depth="5" color="#75e1ff" opacity="0.75"></a-box>
+            </a-entity>
+            <a-entity position="-2 0.1 20" rotation="90 0 0">
+                <a-cylinder route-pulse="color: #75e1ff; min: 0.9; max: 1.1; speed: 1200" height="1.4" radius="0.04" color="#75e1ff" opacity="0.85"></a-cylinder>
+                <a-cone route-pulse="color: #75e1ff; min: 0.9; max: 1.1; speed: 1200" height="0.4" radius-bottom="0.16" radius-top="0" color="#75e1ff" position="0 0.8 0"></a-cone>
+            </a-entity>
+            <a-entity position="-4 0.1 -6" look-at="#camera">
+                <a-box width="0.08" height="0.08" depth="0.9" color="#75e1ff" opacity="0.95"></a-box>
+                <a-cone height="0.35" radius-bottom="0.16" radius-top="0" color="#75e1ff" rotation="0 180 0" position="0 0 0.7"></a-cone>
+                <a-text value="Sun Motif" color="#fff" align="center" width="1.0" position="0 0.26 0"></a-text>
+            </a-entity>
+        </a-entity>
+        <a-entity id="route-canoe" visible="false">
+            <a-entity position="3 0.1 35" rotation="90 0 0">
+                <a-cylinder route-pulse="color: #9eff76; min: 0.9; max: 1.1; speed: 1200" height="1.4" radius="0.04" color="#9eff76" opacity="0.85"></a-cylinder>
+                <a-cone route-pulse="color: #9eff76; min: 0.9; max: 1.1; speed: 1200" height="0.4" radius-bottom="0.16" radius-top="0" color="#9eff76" position="0 0.8 0"></a-cone>
+            </a-entity>
+            <a-entity position="3 0.0 30" rotation="90 0 0">
+                <a-box width="0.08" height="0.08" depth="6" color="#9eff76" opacity="0.75"></a-box>
+            </a-entity>
+            <a-entity position="4 0.08 22" rotation="90 0 0">
+                <a-cylinder route-pulse="color: #9eff76; min: 0.9; max: 1.1; speed: 1200" height="1.4" radius="0.04" color="#9eff76" opacity="0.85"></a-cylinder>
+                <a-cone route-pulse="color: #9eff76; min: 0.9; max: 1.1; speed: 1200" height="0.4" radius-bottom="0.16" radius-top="0" color="#9eff76" position="0 0.8 0"></a-cone>
+            </a-entity>
+            <a-entity position="6 0.1 -1" look-at="#camera">
+                <a-box width="0.08" height="0.08" depth="0.9" color="#9eff76" opacity="0.95"></a-box>
+                <a-cone height="0.35" radius-bottom="0.16" radius-top="0" color="#9eff76" rotation="0 180 0" position="0 0 0.7"></a-cone>
+                <a-text value="Canoe" color="#fff" align="center" width="1.0" position="0 0.26 0"></a-text>
+            </a-entity>
+        </a-entity>
+        <!-- Route guide entities (invisible) -->
+        <a-entity id="route-abstract" visible="false">
+            <a-entity position="-12 0.1 2" rotation="90 0 0">
+                <a-cylinder route-pulse="color: #ff6b9d; min: 0.9; max: 1.1; speed: 1200" height="1.4" radius="0.04" color="#ff6b9d" opacity="0.85"></a-cylinder>
+                <a-cone route-pulse="color: #ff6b9d; min: 0.9; max: 1.1; speed: 1200" height="0.4" radius-bottom="0.16" radius-top="0" color="#ff6b9d" position="0 0.8 0"></a-cone>
+            </a-entity>
+        </a-entity>
+        <a-entity id="route-handprints" visible="false">
+            <a-entity position="14 0.1 6" rotation="90 0 0">
+                <a-cylinder route-pulse="color: #ffa500; min: 0.9; max: 1.1; speed: 1200" height="1.4" radius="0.04" color="#ffa500" opacity="0.85"></a-cylinder>
+                <a-cone route-pulse="color: #ffa500; min: 0.9; max: 1.1; speed: 1200" height="0.4" radius-bottom="0.16" radius-top="0" color="#ffa500" position="0 0.8 0"></a-cone>
+            </a-entity>
+        </a-entity>
+        <a-entity id="route-circles" visible="false">
+            <a-entity position="12 0.1 22" rotation="90 0 0">
+                <a-cylinder route-pulse="color: #00d9ff; min: 0.9; max: 1.1; speed: 1200" height="1.4" radius="0.04" color="#00d9ff" opacity="0.85"></a-cylinder>
+                <a-cone route-pulse="color: #00d9ff; min: 0.9; max: 1.1; speed: 1200" height="0.4" radius-bottom="0.16" radius-top="0" color="#00d9ff" position="0 0.8 0"></a-cone>
+            </a-entity>
+        </a-entity>
+        <a-entity id="painting-nyero1" position="-8 1.2 25" particle-emitter="color: #ffffff; count: 30; areaRadius: 0.5; speed: 0.02; size: 0.04; lifetime: 2000">
+            <!-- Nyero 1: Six concentric circles in white + acacia pods -->
+            <a-ring class="clickable" radius-inner="0.25" radius-outer="0.35" position="-0.4 0.05 0" rotation="90 0 0"
+                  material="shader: flat; color: #ffffff; transparent: true; opacity: 0.85; side: double; depthTest: true; depthWrite: false"
+                  hotspot-listener="description: 📍 NYERO 1 SHELTER - White Concentric Circles\n\n🎨 ARTISTIC DETAILS:\nMotifs: Six sets of concentric circles + acacia pod designs\nPigment: White clay/chalk (kaolin)\nTechnique: Finger-painted and hand-drawn\nAge: Estimated 1,500-2,500 years old\n\n🏛️ ARCHAEOLOGICAL INFO:\nShelter Type: Small rock overhang with natural protection\nSize: ~3m wide x 2.5m deep\nLocation: Adjacent to Nyero Primary School, Kumi District\nCoordinates: 1.3°N, 33.9°E\n\n📚 CULTURAL SIGNIFICANCE:\nCreators: Ancient hunter-gatherer communities (San/Bushmen ancestors)\nPurpose: Spiritual, ceremonial, or symbolic marking\nPaintings represent: Cosmic symbols, healing rituals, or territorial markers\n\n🔬 PRESERVATION STATUS:\nCondition: Generally well-preserved\nThreats: Natural weathering, water seepage, human contact\nProtection: UNESCO-monitored site\n\n🌍 SITE CONTEXT:\nPart of Nyero Rock complex with 6 documented shelters\n1,000-4,000 years of continuous artistic expression\nOne of East Africa's most significant rock art sites">
+                  hotspot-listener="description: 📍 NYERO 1 SHELTER - Kumi District, Eastern Uganda\n\nLocation: Eastern Uganda, Kumi District\nCoordinates: Approximately 1.3°N, 33.9°E\nAccess: 15km north of Soroti town, near Nyero Primary School\n\nDescription: Six sets of white concentric circles and acacia pod motifs carved into a small rock shelter with natural overhanging rock protection. This ancient hunter-gatherer art dates back 1,000-4,000 years.\n\nDirections: From Soroti town, head northeast on the main road toward Kumi. Continue for about 15km until you reach Nyero Primary School. The rock shelter is located adjacent to the school. Best visited during dry season (June-August or December-February)."</a-ring>
+            <a-ring radius-inner="0.18" radius-outer="0.25" position="-0.4 0.05 0" rotation="90 0 0"
+                material="shader: flat; color: #f0f0f0; transparent: true; opacity: 0.75; side: double; depthTest: true; depthWrite: false"></a-ring>
+            <a-circle radius="0.10" position="-0.4 0.05 0" rotation="90 0 0"
+                  material="shader: flat; color: #e8e8e8; transparent: true; opacity: 0.8; side: double; depthTest: true; depthWrite: false"></a-circle>
+            <!-- Acacia pod designs -->
+            <a-plane width="0.3" height="0.15" position="0.4 0.05 0" rotation="90 0 0"
+                  material="shader: flat; color: #f5f5f5; transparent: true; opacity: 0.8; side: double; depthTest: true; depthWrite: false"></a-plane>
+            <a-entity position="0 0.4 0" look-at="#camera">
+                <a-text value="Nyero 1: White Concentric Circles" color="#fff" align="center" width="1.4"></a-text>
+            </a-entity>
+        </a-entity>
+        <a-entity id="painting-sun" position="5 1.2 22" particle-emitter="color: #ff6b6b; count: 36; areaRadius: 0.6; speed: 0.02; size: 0.045; lifetime: 2200">
+            <!-- Nyero 2: Main shelter with 40+ motifs in red, dominated by concentric circles -->
+            <a-ring class="clickable" radius-inner="0.30" radius-outer="0.50" position="-0.5 0.05 0" rotation="90 0 0"
+                  material="shader: flat; color: #cc3333; transparent: true; opacity: 0.8; side: double; depthTest: true; depthWrite: false"
+                  hotspot-listener="description: 📍 NYERO 2 SHELTER (MAIN SITE) - Kumi District, Eastern Uganda\n\n🎨 ARTISTIC DETAILS:\nMotifs: 40+ red finger-painted designs\nDominant Forms: Concentric circles, acacia pod/canoe shapes, abstract symbols\nPigment: Red ochre (iron oxide - natural mineral)\nTechnique: Finger-painting (direct hand application)\nAge: Estimated 2,000-4,000 years old\n\n🏛️ ARCHAEOLOGICAL INFO:\nShelter Type: Largest overhang at Nyero complex\nSize: ~5m wide x 4m deep with excellent rock protection\nLocation: Central point of Nyero Rock formation, at Nyero Primary School\nCoordinates: 1.3°N, 33.9°E\n\n📚 CULTURAL SIGNIFICANCE:\nCreators: Early hunter-gatherer populations (possibly San/Bushmen ancestors)\nPurpose: Sacred/spiritual site, community gathering place\nSymbolism: Concentric circles = life, cycles, cosmology; Canoe = travel, hunting, survival\n\n🔬 PRESERVATION STATUS:\nCondition: Excellent - well-protected by rock overhang\nOriginal Pigment: Still visible after millennia\nProtection: National heritage site with research access\n\n📖 RESEARCH:\nStudied by: Multiple archaeological teams since 1950s\nSignificance: Represents transition from hunting to early settlement patterns">
+                  hotspot-listener="description: 📍 NYERO 2 SHELTER (MAIN SITE) - Kumi District, Eastern Uganda\n\nLocation: Eastern Uganda, Kumi District\nCoordinates: Approximately 1.3°N, 33.9°E\nAccess: 15km north of Soroti town, at Nyero Primary School compound\n\nDescription: The primary and largest shelter at Nyero with 40+ red finger-painted motifs. Concentric circles dominate, along with the iconic acacia pod and canoe designs. This is the most significant rock art site in the area, showcasing exceptional ancient artistic expression.\n\nDirections: From Soroti town center, drive northeast toward Kumi for approximately 15km. The main Nyero Rock with this shelter is located right at Nyero Primary School. Park near the school and walk to the rock face. Local guides are recommended for better understanding of the artwork."></a-ring>
+            <a-ring radius-inner="0.20" radius-outer="0.30" position="-0.5 0.05 0" rotation="90 0 0"
+                material="shader: flat; color: #dd4444; transparent: true; opacity: 0.7; side: double; depthTest: true; depthWrite: false"></a-ring>
+            <a-circle radius="0.12" position="-0.5 0.05 0" rotation="90 0 0"
+                  material="shader: flat; color: #ee5555; transparent: true; opacity: 0.75; side: double; depthTest: true; depthWrite: false"></a-circle>
+            <!-- Canoe/acacia pod motif -->
+            <a-plane width="0.6" height="0.2" position="0.5 0.05 0" rotation="90 0 0"
+                  material="shader: flat; color: #bb2222; transparent: true; opacity: 0.8; side: double; depthTest: true; depthWrite: false"></a-plane>
+            <a-entity position="0 0.4 0" look-at="#camera">
+                <a-text value="Nyero 2: Main Shelter (40+ Red Motifs)" color="#fff" align="center" width="1.5"></a-text>
+            </a-entity>
+        </a-entity>
+        <a-entity id="painting-canoe" position="-12 1.2 20" particle-emitter="color: #ffffff; count: 28; areaRadius: 0.5; speed: 0.018; size: 0.05; lifetime: 2000">
+            <!-- Nyero 3: White concentric circles with double curved designs -->
+            <a-ring class="clickable" radius-inner="0.28" radius-outer="0.48" position="0 0.05 0" rotation="90 0 0"
+                     material="shader: flat; color: #ffffff; transparent: true; opacity: 0.85; side: double; depthTest: true; depthWrite: true"
+                     hotspot-listener="description: 📍 NYERO 3 SHELTER - White Concentric Circles with Double Curved Designs\n\n🎨 ARTISTIC DETAILS:\nMotifs: Concentric circles + double curved lines + compartmented designs\nPigment Type: White clay (kaolin) - naturally mined locally\nPigment Source: Local white clay deposits, possibly mixed with animal fat\nTechnique: Finger-painting and hand-drawing\nEstimated Age: 1,500-2,500 years old (Radiocarbon dating suggests mid-Iron Age)\n\n🏛️ ARCHAEOLOGICAL INFO:\nShelter Type: Natural rock overhang with north-facing entrance\nDimensions: ~2.5m wide x 2m deep\nLocation: Northern edge of Nyero inselberg\nCoordinates: 1.3°N, 33.9°E (north section)\n\n🎼 ARTISTIC SIGNIFICANCE:\nDouble-Curved Patterns: Possibly represent water, fertility, or cyclical time\nCompartmented Sections: May indicate territorial or ceremonial divisions\nUniqueness: This particular style found nowhere else in East African rock art\nArtistic Advancement: Suggests sophisticated artistic planning and execution\n\n🔍 PRESERVATION & RESEARCH:\nCondition: White pigments well-preserved despite age\nChallenges: Northern exposure to wind and seasonal weathering\nResearch: Limited detailed studies; needs further archaeological investigation\nScientific Value: Key to understanding artistic evolution across shelter sites\n\n📚 CULTURAL CONTEXT:\nCreators: Ancient hunter-gatherer populations (ancestral San/Bushmen)\nTime Period: Mid-Iron Age transition period (0-2500 years ago)\nPurpose: Ceremonial, spiritual marking, or astronomical/seasonal calendar">\n                     hotspot-listener="description: 📍 NYERO 3 SHELTER - Kumi District, Eastern Uganda\n\nLocation: Eastern Uganda, Kumi District\nCoordinates: Approximately 1.3°N, 33.9°E (north end of rock formation)\nAccess: 15km north of Soroti town, northern side of Nyero Rock\n\nDescription: White concentric circles surrounded by distinctive double curved designs and double-lined compartments. Located at the far northern end of the inselberg (rock formation), this shelter demonstrates varied artistic techniques used by ancient peoples.\n\nDirections: From the main Nyero 2 shelter, walk around the northern base of the Nyero rock formation. This shelter is accessible but may require some climbing. The northern side offers views toward Kumi town. Proper footwear recommended."></a-ring>
+            <a-ring radius-inner="0.18" radius-outer="0.28" position="0 0.05 0" rotation="90 0 0"
+                     material="shader: flat; color: #f0f0f0; transparent: true; opacity: 0.75; side: double; depthTest: true"></a-ring>
+            <a-circle radius="0.10" position="0 0.05 0" rotation="90 0 0"
+                     material="shader: flat; color: #e8e8e8; transparent: true; opacity: 0.8; side: double; depthTest: true"></a-circle>
+            <!-- Double curved design -->
+            <a-plane width="0.5" height="0.1" position="-0.6 0.05 0" rotation="90 0 0"
+                     material="shader: flat; color: #f5f5f5; transparent: true; opacity: 0.75; side: double; depthTest: true"></a-plane>
+            <a-entity position="0 0.4 0" look-at="#camera">
+                <a-text value="Nyero 3: White Circles & Curves" color="#fff" align="center" width="1.4"></a-text>
+            </a-entity>
+        </a-entity>
+        <!-- Nyero 4 Painting -->
+        <a-entity id="painting-abstract" position="10 1.2 18" particle-emitter="color: #ff8888; count: 24; areaRadius: 0.6; speed: 0.02; size: 0.045; lifetime: 2000">
+            <!-- Nyero 4: Red concentric circles, conical shapes, and lines -->
+            <a-ring class="clickable" radius-inner="0.22" radius-outer="0.40" position="-0.3 0.05 0"
+                     rotation="90 0 0" material="shader: flat; color: #cc4444; transparent: true; opacity: 0.75; side: double; depthTest: true; depthWrite: true"
+                     hotspot-listener="description: 📍 NYERO 4 SHELTER - Kumi District, Eastern Uganda\n\nLocation: Eastern Uganda, Kumi District\nCoordinates: Approximately 1.3°N, 33.9°E (south-west section)\nAccess: 15km north of Soroti town, south-western side of Nyero Rock\n\nDescription: Red finger-painted concentric circles arranged with two distinctive conical shapes and linear patterns. This shelter is positioned on the south-western side of the rock formation, offering a different perspective of the artistic styles used.\n\nDirections: From Nyero Primary School, walk around to the south-western base of the rock. This section is less visited but contains well-preserved red ochre paintings. The path can be steep; use caution when climbing. Visit early morning for better lighting and photography.\"></a-ring>
+            <a-ring radius-inner="0.14" radius-outer="0.22" position="-0.3 0.05 0" rotation="90 0 0"
+                    material="shader: flat; color: #dd5555; transparent: true; opacity: 0.65; side: double; depthTest: true\"></a-ring>
+            <!-- Conical shapes -->
+            <a-cone height="0.3" radius-bottom="0.12" radius-top="0" position="0.4 0.05 0" color="#bb3333" material="shader: flat; transparent: true; opacity: 0.7; side: double; depthTest: true\"></a-cone>
+            <a-entity position="0 0.4 0" look-at="#camera">
+                <a-text value="Nyero 4: Red Circles & Cones" color="#fff" align="center" width="1.3\"></a-text>
+            </a-entity>
+        </a-entity>
+        <!-- Nyero 5 Painting -->
+        <a-entity id="painting-handprints" position="-5 1.2 16" particle-emitter="color: #ff9999; count: 26; areaRadius: 0.5; speed: 0.019; size: 0.048; lifetime: 2100">
+            <!-- Nyero 5: Red geometric motif with circular and linear shapes -->
+            <a-circle class="clickable" radius="0.40" position="-0.2 0.05 0" rotation="90 0 0"
+                     material="shader: flat; color: #dd4444; transparent: true; opacity: 0.75; side: double; depthTest: true; depthWrite: true"
+                     hotspot-listener="description: 📍 NYERO 5 SHELTER - Kumi District, Eastern Uganda\n\nLocation: Eastern Uganda, Kumi District\nCoordinates: Approximately 1.3°N, 33.9°E (western section)\nAccess: 15km north of Soroti town, western side of Nyero Rock near school\n\nDescription: Red geometric motifs composed of circular and linear shapes made with both brush and finger techniques. Located on the western side of the rock formation, very close to Nyero Primary School buildings, making this the most accessible shelter for visitors.\n\nDirections: From Nyero Primary School main compound, walk around the western base of the rock. This shelter is the easiest to reach and best for group visits. The proximity to the school means good facilities nearby. Please respect school property and visiting hours.\"></a-circle>
+            <a-plane width="0.6" height="0.15" position="0.4 0.05 0" rotation="90 0 0"
+                   material="shader: flat; color: #cc3333; transparent: true; opacity: 0.7; side: double; depthTest: true\"></a-plane>
+            <a-entity position="0 0.4 0" look-at="#camera">
+                <a-text value="Nyero 5: Geometric Motifs" color="#fff" align="center" width="1.2\"></a-text>
+            </a-entity>
+        </a-entity>
+        <!-- Nyero 6 Painting -->
+        <a-entity id="painting-circles" position="-15 1.2 24" particle-emitter="color: #ffaa99; count: 25; areaRadius: 0.5; speed: 0.02; size: 0.045; lifetime: 2000">
+            <!-- Nyero 6: Red ovals, L-shape, cross with circle -->
+            <a-plane class="clickable" width="0.35" height="0.20" position="-0.4 0.05 0" rotation="90 0 0"
+                     material="shader: flat; color: #cc5555; transparent: true; opacity: 0.75; side: double; depthTest: true; depthWrite: true"
+                     hotspot-listener="description: 📍 NYERO 6 SHELTER (HILLTOP) - Kumi District, Eastern Uganda\n\nLocation: Eastern Uganda, Kumi District\nCoordinates: Approximately 1.3°N, 33.9°E (hilltop section)\nAccess: 15km north of Soroti town, highest point of Nyero Rock\n\nDescription: Red finger-painted ovals, slanting L-shapes, and outlined crosses with small circles. Located at the highest point of the Nyero inselberg with panoramic views across Kumi District and surrounding areas. Note: The painted surface shows natural exfoliation and weathering due to age and exposure.\n\nDirections: This is the most challenging shelter to reach. From the base, climb to the summit (approximately 15-20 minute hike). The panoramic views are spectacular - you can see across the eastern Uganda landscape toward the Karamoja region. Not recommended for those with mobility issues. Wear climbing shoes and carry water.\n\n--- GENERAL INFORMATION ---\nBest Time to Visit: June-August or December-February (dry seasons)\nNearest Town: Soroti (15km south)\nAccommodations: Soroti town has various lodges and hotels\nGuide Services: Local guides available through Nyero Primary School\nPreservation: Do not touch the painted surfaces; oils from skin damage ancient pigments.\"></a-plane>
+            <!-- L-shape design -->
+            <a-plane width="0.20" height="0.35" position="0.1 0.05 0" rotation="90 0 0"
+                   material="shader: flat; color: #dd4444; transparent: true; opacity: 0.7; side: double; depthTest: true\"></a-plane>
+            <!-- Cross with circle -->
+            <a-plane width="0.30" height="0.08" position="0.5 0.05 0" rotation="90 0 0"
+                     material="shader: flat; color: #bb3333; transparent: true; opacity: 0.7; side: double; depthTest: true\"></a-plane>
+            <a-circle radius="0.08" position="0.5 0.05 0" rotation="90 0 0"
+                     material="shader: flat; color: #ee5555; transparent: true; opacity: 0.75; side: double; depthTest: true\"></a-circle>
+            <a-entity position="0 0.4 0" look-at="#camera">
+                <a-text value="Nyero 6: Ovals, L & Cross" color="#fff" align="center" width="1.3\"></a-text>
+            </a-entity>
+        </a-entity>
+        <a-sphere class="clickable" position="-7 2 -2" radius="0.15" color="orange" 
+                  hotspot-listener="description: Nyero 2: This is the largest shelter at the site, containing over 40 sets of concentric circles and various abstract symbols.">
+        </a-sphere>
+        <a-sphere class="clickable" position="0 1.2 15" radius="0.15" color="green" 
+                  hotspot-listener="description: Preservation: These paintings are estimated to be between 1,000 and 4,000 years old. Please do not touch the rock surfaces.">
+        </a-sphere>
+        <a-entity id="camera-rig" position="0 -2 45" wheel-smooth="speed: 0.14; damping: 0.12" movement-limit="maxX: 9999; maxZ: 9999" route-manager>
+            <a-entity id="camera" camera look-controls wasd-controls position="0 1.6 0">
+                <a-cursor color="#FF0000" raycaster="objects: .clickable"></a-cursor>
+                <a-entity id="route-pointer" route-pointer position="0 -0.5 -1.5">
+                    <!-- Glowing outer ring -->
+                    <a-torus radius="0.3" radius-tubular="0.02" color="#00d4ff" opacity="0.7" rotation="90 0 0"></a-torus>
+                    <!-- Center glowing sphere -->
+                    <a-sphere radius="0.12" color="#00d4ff" opacity="0.9" material="emissive: #00d4ff; emissiveIntensity: 0.8"></a-sphere>
+                    <!-- Directional arrow pointing forward -->
+                    <a-cone height="0.4" radius-bottom="0.12" radius-top="0" color="#00d4ff" position="0 0 0.25" opacity="0.85"></a-cone>
+                    <!-- Pulsing ring for attention -->
+                    <a-torus radius="0.38" radius-tubular="0.01" color="#00d4ff" opacity="0.3" rotation="90 0 0" animation="property: radius; from: 0.3; to: 0.5; dur: 1500; easing: easeInOutQuad; loop: true"></a-torus>
+                    <!-- Target label -->
+                    <a-text id="route-pointer-label" value="To Nyero 1 rock painting" color="#fff" align="center" width="0.8" position="0 0.5 0" look-at="#camera" scale="0.8 0.8 0.8"></a-text>
+                </a-entity>
+                <a-entity position="0.8 -0.5 -1">
+                    <a-plane class="clickable" width="0.6" height="0.2" color="#333" 
+                             teleport-to="pos: 0 -2 45">
+                        <a-text value="RETURN TO START" align="center" width="1.5" color="white"></a-text>
+                    </a-plane>
+                </a-entity>
+            </a-entity>
+        </a-entity>
+        <a-sky src="#sky-image" color="#87CEEB"></a-sky>
+    </a-scene>
+
+    <!-- Navigation overlay: quick teleport buttons -->
+    <div id="nav-panel" style="position:fixed;left:12px;top:12px;z-index:9998;background:rgba(0,0,0,0.6);padding:8px;border-radius:8px;color:#fff;font-family:Arial,sans-serif;">
+        <div style="font-weight:600;margin-bottom:6px">Navigate</div>
+        <div id="user-badge" style="font-size:12px;color:#9fe;margin-bottom:6px">User: <span id="nav-username">(not signed in)</span></div>
+        <div style="font-size:11px;color:#ccc;margin-bottom:8px">Follow the on-screen pointer in the scene to find each rock painting on the Nyero shelter site.</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            <button type="button" onclick="navigateTo(0,-2,45)" style="padding:6px 8px;background:#1e90ff;border:none;border-radius:6px;color:#fff;cursor:pointer">Start</button>
+            <button type="button" onclick="navigateTo(-8,1.2,25)" style="padding:6px 8px;background:#fff;border:none;border-radius:6px;color:#333;cursor:pointer">Nyero 1</button>
+            <button type="button" onclick="navigateTo(5,1.2,22)" style="padding:6px 8px;background:#dd4444;border:none;border-radius:6px;color:#fff;cursor:pointer">Nyero 2</button>
+            <button type="button" onclick="navigateTo(-12,1.2,20)" style="padding:6px 8px;background:#f0f0f0;border:none;border-radius:6px;color:#333;cursor:pointer">Nyero 3</button>
+            <button type="button" onclick="navigateTo(10,1.2,18)" style="padding:6px 8px;background:#cc5555;border:none;border-radius:6px;color:#fff;cursor:pointer">Nyero 4</button>
+            <button type="button" onclick="navigateTo(-5,1.2,16)" style="padding:6px 8px;background:#dd4444;border:none;border-radius:6px;color:#fff;cursor:pointer">Nyero 5</button>
+            <button type="button" onclick="navigateTo(-15,1.2,24)" style="padding:6px 8px;background:#cc5555;border:none;border-radius:6px;color:#fff;cursor:pointer">Nyero 6</button>
+            <button type="button" onclick="navigateTo(0,-2,45)" style="padding:6px 8px;background:#444;border:none;border-radius:6px;color:#fff;cursor:pointer">Return</button>
+            <button id="audio-toggle" type="button" onclick="toggleAudio()" style="padding:6px 8px;background:#6b5b95;border:none;border-radius:6px;color:#fff;cursor:pointer">Audio</button>
+            <button type="button" onclick="openMapModal()" style="padding:6px 8px;background:#2d5a8c;border:none;border-radius:6px;color:#fff;cursor:pointer">🗺️ Map Location</button>
+            <button type="button" onclick="openArchaeologyGuide()" style="padding:6px 8px;background:#8b4513;border:none;border-radius:6px;color:#fff;cursor:pointer">📚 Archaeology</button>
+        </div>
+        <div style="font-size:11px;color:#ccc;margin-top:6px">Keys: 1 Start • 2-7 Shelters • Esc close | Authentic Nyero rock paintings from Kumi District, Uganda</div>
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <button id="admin-panel-link" type="button" onclick="openAdminPanel()" style="display:none;padding:6px 8px;background:#6a9cff;border:none;border-radius:6px;color:#fff;cursor:pointer">Admin Panel</button>
+            <button id="btn-logout" type="button" onclick="logoutUser()" style="padding:6px 8px;background:#8b0000;border:none;border-radius:6px;color:#fff;cursor:pointer">Logout</button>
+        </div>
+    </div>
+
+    <div id="mobile-controls">
+        <button type="button" class="mobile-button" data-dir="forward">↑</button>
+        <button type="button" class="mobile-button" data-dir="left">←</button>
+        <button type="button" class="mobile-button" data-dir="right">→</button>
+        <button type="button" class="mobile-button" data-dir="back">↓</button>
+    </div>
+    <div id="mobile-gui">Mobile: drag to look. Use the buttons to move. Tap a hotspot to learn more.</div>
+    <div id="desktop-gui">Desktop: use WASD or arrow keys, drag to look, and scroll to move forward/back.</div>
+    <!-- Directions Panel -->
+    <div id="directions-panel" style="position: fixed; top: 80px; right: 12px; background: rgba(20, 40, 80, 0.9); border: 1px solid rgba(100, 160, 255, 0.4); padding: 14px 16px; border-radius: 10px; max-width: 280px; color: #fff; font-family: Arial, sans-serif; font-size: 13px; z-index: 9998; display: none; backdrop-filter: blur(4px);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <strong style="color: #6ab4ff;">🧭 Navigation Guide</strong>
+            <button onclick="toggleDirections()" style="background: none; border: none; color: #fff; cursor: pointer; font-size: 16px;">−</button>
+        </div>
+        <div id="directions-current" style="color: #a8d8ff; margin-bottom: 8px; font-weight: 600;"></div>
+        <div id="directions-next" style="color: #d8e8ff; line-height: 1.4;"></div>
+        <div style="margin-top: 8px; font-size: 12px; color: #7fa8d9;">Press <code>D</code> to toggle this panel</div>
+    </div>
+    <!-- Overlay for painting details (controlled by hotspot-listener) -->
+    <div id="info-overlay" style="display:none;position:fixed;inset:0;align-items:center;justify-content:center;background:rgba(0,0,0,0.8);z-index:9999;">
+        <div style="max-width:900px;width:90%;background:#111;padding:16px;border-radius:8px;display:flex;gap:12px;align-items:flex-start;">
+            <img id="overlay-img" src="" alt="Painting" style="max-width:45%;width:45%;height:auto;border-radius:6px;" />
+            <div style="flex:1;color:#fff">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <strong style="font-size:1.1rem">Rock painting information</strong>
+                    <button id="overlay-close" type="button" style="background:#222;border:1px solid #444;color:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;">Close</button>
+                </div>
+                <div class="info-desc" style="color:#ddd;line-height:1.4"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Google Map Modal -->
+    <div id="map-modal" style="display:none;position:fixed;inset:0;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);z-index:9999;backdrop-filter:blur(2px);">
+        <div style="max-width:900px;width:95%;max-height:90vh;background:#111;padding:0;border-radius:12px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.8);">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;background:linear-gradient(135deg, #1a3a52, #0d1f2d);border-bottom:1px solid rgba(100,160,255,0.2);">
+                <h2 style="margin:0;color:#fff;font-size:1.3rem;font-weight:600">📍 Nyero Rock Location - Kumi District, Uganda</h2>
+                <button onclick="closeMapModal()" style="background:none;border:none;color:#fff;font-size:1.8rem;cursor:pointer;padding:0;line-height:1;">&times;</button>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:12px;padding:16px;overflow-y:auto;background:#0a0e1a;">
+                <div style="width:100%;height:400px;border-radius:8px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.5);">
+                    <iframe width="100%" height="100%" style="border:none;" src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3989.7371234567890!2d33.9!3d1.3!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x1839b5c5c5c5c5c5%3A0x5c5c5c5c5c5c5c5c!2sNyero%20Rock%2C%20Kumi%20District!5e0!3m2!1sen!2sug!4v1234567890" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+                </div>
+                <div style="background:rgba(100,160,255,0.08);padding:12px;border-radius:8px;border-left:3px solid #4a9eff;">
+                    <div style="color:#b0d9ff;font-weight:600;margin-bottom:6px">📌 Location Details:</div>
+                    <div style="color:#a8d8ff;font-size:0.95rem;line-height:1.6;">
+                        <div><strong>Name:</strong> Nyero Rock Art Site</div>
+                        <div><strong>District:</strong> Kumi District, Eastern Uganda</div>
+                        <div><strong>Coordinates:</strong> 1.3°N, 33.9°E</div>
+                        <div><strong>Distance from Soroti:</strong> ~15km north</div>
+                        <div><strong>Landmark:</strong> Nyero Primary School (adjacent)</div>
+                    </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                    <a href="https://maps.google.com/maps?q=1.3,-33.9" target="_blank" style="display:inline-block;padding:10px 14px;background:linear-gradient(135deg, #4a9eff, #20d9c0);color:#fff;text-decoration:none;border-radius:8px;text-align:center;font-weight:600;border:none;cursor:pointer;transition:transform 0.2s ease;font-size:0.95rem;">
+                        🔗 Open in Google Maps
+                    </a>
+                    <button onclick="copyCoordinates()" style="padding:10px 14px;background:rgba(255,255,255,0.1);color:#e8f4ff;border:1px solid rgba(100,160,255,0.3);border-radius:8px;font-weight:600;cursor:pointer;transition:all 0.2s ease;font-size:0.95rem;">
+                        📋 Copy Coordinates
+                    </button>
+                </div>
+                <div style="background:rgba(255,200,0,0.08);padding:12px;border-radius:8px;border-left:3px solid #ffc800;color:#ffe680;font-size:0.92rem;line-height:1.5;">
+                    <strong>💡 Visiting Tips:</strong> Best times to visit are dry seasons (June-August or December-February). From Soroti town, drive northeast for about 15km until you reach Nyero Primary School. Local guides available for better understanding of the artwork and site history.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading overlay shown until main model is ready -->
+    <div id="loader-overlay" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.9);z-index:100001;color:#fff;font-family:Arial,sans-serif;">
+        <div style="text-align:center;max-width:420px;padding:18px;border-radius:8px;background:rgba(0,0,0,0.6)">
+            <div style="font-size:18px;font-weight:600;margin-bottom:8px">Loading Nyero AVR Scene</div>
+            <div id="loader-text" style="font-size:13px;color:#ccc;margin-bottom:12px">Please wait — loading assets...</div>
+            <div id="loader-spinner" style="width:48px;height:48px;border-radius:50%;border:4px solid rgba(255,255,255,0.08);border-top-color:#1e90ff;animation:spin 1s linear infinite;margin:0 auto"></div>
+        </div>
+    </div>
+    <!-- Minimap Canvas -->
+    <div id="minimap" style="display:none;">
+        <canvas id="minimap-canvas"></canvas>
+    </div>
+
+    <!-- Progress Tracker -->
+    <div class="progress-container" id="progress-container" style="display:none;">
+        <div class="progress-title">Paintings Explored</div>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <div class="progress-text"><span id="progress-count">0</span>/<span id="progress-total">6</span> paintings</div>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="search-container" id="search-container" style="display:none;">
+        <input type="text" class="search-input" id="search-input" placeholder="Search paintings..." />
+        <div class="search-results" id="search-results"></div>
+    </div>
+
+    <!-- Settings Panel Modal -->
+    <div id="settings-modal" class="settings-modal" style="display:none;">
+        <div class="settings-card">
+            <div class="settings-header">
+                <h2 class="settings-title">Settings</h2>
+                <button onclick="closeSettings()" style="background:none;border:none;color:#fff;font-size:1.5rem;cursor:pointer;">&times;</button>
+            </div>
+            <div class="settings-body">
+                <!-- Graphics -->
+                <div class="settings-group">
+                    <div class="settings-group-title">Graphics</div>
+                    <div class="settings-item">
+                        <label class="settings-label">Particle Effects</label>
+                        <div class="settings-control">
+                            <div class="settings-toggle active" id="toggle-particles" onclick="toggleSetting(this)"></div>
+                        </div>
+                    </div>
+                    <div class="settings-item">
+                        <label class="settings-label">Shadows</label>
+                        <div class="settings-control">
+                            <div class="settings-toggle active" id="toggle-shadows" onclick="toggleSetting(this)"></div>
+                        </div>
+                    </div>
+                    <div class="settings-item">
+                        <label class="settings-label">Fog</label>
+                        <div class="settings-control">
+                            <div class="settings-toggle active" id="toggle-fog" onclick="toggleSetting(this)"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Audio -->
+                <div class="settings-group">
+                    <div class="settings-group-title">Audio</div>
+                    <div class="settings-item">
+                        <label class="settings-label">Volume</label>
+                        <div class="settings-control">
+                            <input type="range" min="0" max="100" value="50" id="volume-slider" class="settings-slider" onchange="setVolume(this.value)" />
+                        </div>
+                    </div>
+                    <div class="settings-item">
+                        <label class="settings-label">Ambient Sound</label>
+                        <div class="settings-control">
+                            <div class="settings-toggle active" id="toggle-audio" onclick="toggleSetting(this)"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Accessibility -->
+                <div class="settings-group">
+                    <div class="settings-group-title">Accessibility</div>
+                    <div class="settings-item">
+                        <label class="settings-label">Hotspot Labels</label>
+                        <div class="settings-control">
+                            <div class="settings-toggle active" id="toggle-labels" onclick="toggleSetting(this)"></div>
+                        </div>
+                    </div>
+                    <div class="settings-item">
+                        <label class="settings-label">Pointer Beacon</label>
+                        <div class="settings-control">
+                            <div class="settings-toggle active" id="toggle-beacon" onclick="toggleSetting(this)"></div>
+                        </div>
+                    </div>
+                    <div class="settings-item">
+                        <label class="settings-label">Text Size</label>
+                        <div class="settings-control">
+                            <input type="range" min="0.8" max="1.5" step="0.1" value="1.0" id="text-size-slider" class="settings-slider" onchange="setTextSize(this.value)" />
+                        </div>
+                    </div>
+                </div>
+                <!-- Gameplay -->
+                <div class="settings-group">
+                    <div class="settings-group-title">Gameplay</div>
+                    <div class="settings-item">
+                        <label class="settings-label">Guided Tour</label>
+                        <div class="settings-control">
+                            <div class="settings-toggle" id="toggle-tour" onclick="startGuidedTour()"></div>
+                        </div>
+                    </div>
+                    <div class="settings-item">
+                        <label class="settings-label">Show Minimap</label>
+                        <div class="settings-control">
+                            <div class="settings-toggle" id="toggle-minimap" onclick="toggleMinimap()"></div>
+                        </div>
+                    </div>
+                    <div class="settings-item">
+                        <label class="settings-label">Performance Monitor</label>
+                        <div class="settings-control">
+                            <div class="settings-toggle" id="toggle-perf" onclick="togglePerfMonitor()"></div>
+                        </div>
+                    </div>
+                    <div class="settings-item">
+                        <label class="settings-label">Fullscreen</label>
+                        <div class="settings-control">
+                            <button onclick="toggleFullscreen()" style="padding:8px 12px;background:#4a9eff;border:none;color:#fff;border-radius:6px;cursor:pointer;">Toggle</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="settings-footer">
+                <button class="close-btn" onclick="closeSettings()">Close Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="help-modal" class="help-modal" style="display:none;">
+        <div class="help-card">
+            <div class="help-header">
+                <h2 class="help-title">Help & Tutorial</h2>
+                <button onclick="closeHelp()" style="background:none;border:none;color:#fff;font-size:1.5rem;cursor:pointer;">&times;</button>
+            </div>
+            <div class="help-body">
+                <div class="help-section">
+                    <div class="help-section-title">📍 Navigation</div>
+                    <div class="help-section-content">
+                        <strong>Desktop:</strong> Use <code>WASD</code> or arrow keys to move. Drag with mouse to look around. Scroll to move forward/back.<br/>
+                        <strong>Mobile:</strong> Drag to look around. Use on-screen buttons to move.
+                    </div>
+                </div>
+                <div class="help-section">
+                    <div class="help-section-title">🎯 Interact with Paintings</div>
+                    <div class="help-section-content">
+                        Approach any rock painting and click on it to learn more. The guided pointer will help you find each painting at the Nyero site.
+                    </div>
+                </div>
+                <div class="help-section">
+                    <div class="help-section-title">🗺️ Quick Navigation</div>
+                    <div class="help-section-content">
+                        Use the navigation buttons at the top-left, or press <code>1</code>-<code>0</code>, <code>Q</code>, <code>W</code> for quick teleport to each painting.
+                    </div>
+                </div>
+                <div class="help-section">
+                    <div class="help-section-title">⚙️ Settings</div>
+                    <div class="help-section-content">
+                        Customize graphics, audio, accessibility, and gameplay options from the Settings panel. Enable guided tour for a structured experience.
+                    </div>
+                </div>
+                <div class="help-section">
+                    <div class="help-section-title">📊 Track Progress</div>
+                    <div class="help-section-content">
+                        View your exploration progress in the top-right corner. Complete visits to all 11 rock painting sites!
+                    </div>
+                </div>
+                <div class="help-section">
+                    <div class="help-section-title">⭐ Favorites</div>
+                    <div class="help-section-content">
+                        Click the star icon near paintings you find interesting to save them. Access your favorites from the nav panel.
+                    </div>
+                </div>
+                <div class="help-section">
+                    <div class="help-section-title">🔍 Search</div>
+                    <div class="help-section-content">
+                        Use the search bar at the top to quickly find paintings by name or keyword. Results appear instantly.
+                    </div>
+                </div>
+                <div class="help-section">
+                    <div class="help-section-title">🎮 Tips</div>
+                    <div class="help-section-content">
+                        • Enable Guided Tour for step-by-step direction to each painting<br/>
+                        • Use Minimap to orient yourself in the scene<br/>
+                        • Particle effects and shadows enhance immersion but use more resources<br/>
+                        • Adjust text size for better readability
+                    </div>
+                </div>
+                <div class="help-section">
+                    <div class="help-section-title">🧭 Directions to Painting Sites</div>
+                    <div class="help-section-content">
+                        <strong>Starting Point:</strong> You begin at the base of the Nyero inselberg. Look around to get oriented.<br/><br/>
+                        <strong>Site 1 (Shelter 1):</strong> Move forward and slightly left. Look for the first shelter with white concentric circles (easy to spot).<br/><br/>
+                        <strong>Site 2 (Shelter 2):</strong> Continue around the rock formation. This is the main shelter with 40+ red paintings—the most significant site.<br/><br/>
+                        <strong>Site 3 (Shelter 3):</strong> Head northward along the inselberg. Features white circles with double curved designs.<br/><br/>
+                        <strong>Site 4 (Shelter 4):</strong> Move to the south-western side of the hill. Red finger-painted circles and conical shapes.<br/><br/>
+                        <strong>Site 5 (Shelter 5):</strong> Continue west near the primary school area. Red geometric designs made with brush and finger.<br/><br/>
+                        <strong>Pro Tip:</strong> Press number keys <code>1-5</code> for quick teleport to each shelter, or use the navigation panel buttons!
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Performance Monitor -->
+    <div id="perf-monitor">
+        <div>FPS: <span id="perf-fps">60</span></div>
+        <div>Ping: <span id="perf-ping">0</span>ms</div>
+        <div>Entities: <span id="perf-entities">0</span></div>
+    </div>
+
+    <!-- Add Settings and Help buttons to nav panel -->
+    <script>
+        window.addEventListener('load', function() {
+            const navPanel = document.getElementById('nav-panel');
+            if (navPanel) {
+                const buttonContainer = navPanel.querySelector('[style*="display:flex;gap:6px"]');
+                if (buttonContainer) {
+                    // Insert settings and help buttons
+                    const settingsBtn = document.createElement('button');
+                    settingsBtn.type = 'button';
+                    settingsBtn.onclick = function() { document.getElementById('settings-modal').style.display = 'flex'; };
+                    settingsBtn.style.cssText = 'padding:6px 8px;background:#6b5b95;border:none;border-radius:6px;color:#fff;cursor:pointer';
+                    settingsBtn.textContent = '⚙️ Settings';
+                    
+                    const helpBtn = document.createElement('button');
+                    helpBtn.type = 'button';
+                    helpBtn.onclick = function() { document.getElementById('help-modal').style.display = 'flex'; };
+                    helpBtn.style.cssText = 'padding:6px 8px;background:#4a7c99;border:none;border-radius:6px;color:#fff;cursor:pointer';
+                    helpBtn.textContent = '❓ Help';
+                    
+                    buttonContainer.parentNode.insertBefore(settingsBtn, buttonContainer.nextSibling);
+                    settingsBtn.parentNode.insertBefore(helpBtn, settingsBtn.nextSibling);
+                }
+            }
+        });
+    </script>
+    
+        // Loader overlay control: hide when main model or scene is ready (with timeout fallback)
+        (function(){
+            let loaderHidden = false;
+            function hideLoader(reason){ 
+                if(loaderHidden) return;
+                loaderHidden = true;
+                const lo = document.getElementById('loader-overlay'); 
+                if(lo) {
+                    lo.setAttribute('style', 'display: none !important; visibility: hidden; pointer-events: none;');
+                    console.log('Loader hidden: ' + (reason || 'unknown'));
+                }
+            }
+            function setLoaderText(t){ const e = document.getElementById('loader-text'); if(e) e.textContent = t; }
+            
+            // Ensure hideLoader is called after a reasonable timeout
+            // This handles cases where events don't fire or are delayed
+            const timeoutId = setTimeout(()=>{ hideLoader('timeout'); }, 8000);
+            
+            const modelEl = document.getElementById('nyero-model');
+            if(modelEl){
+                setLoaderText('Loading 3D model...');
+                
+                // Listen for model-loaded event
+                const onModelLoaded = ()=>{
+                    clearTimeout(timeoutId);
+                    setLoaderText('Model loaded — finalizing...');
+                    setTimeout(()=>hideLoader('model-loaded'), 600);
+                };
+                
+                // Listen for model-error event
+                const onModelError = (ev)=>{
+                    setLoaderText('Failed to load model: ' + (ev && ev.detail ? ev.detail : 'unknown'));
+                    setTimeout(()=>hideLoader('error-recovery'), 3000);
+                };
+                
+                modelEl.addEventListener('model-loaded', onModelLoaded);
+                modelEl.addEventListener('model-error', onModelError);
+                
+                // Also listen to scene events as fallback
+                const scene = document.querySelector('a-scene');
+                if(scene){
+                    scene.addEventListener('loaded', ()=>{ clearTimeout(timeoutId); hideLoader('scene-loaded'); });
+                    scene.addEventListener('rendered', ()=>{ clearTimeout(timeoutId); hideLoader('scene-rendered'); });
+                }
+            } else {
+                // If model element not found, try scene instead
+                const scene = document.querySelector('a-scene');
+                if(scene){
+                    scene.addEventListener('loaded', ()=>{ clearTimeout(timeoutId); hideLoader('scene-loaded'); });
+                    scene.addEventListener('rendered', ()=>{ clearTimeout(timeoutId); hideLoader('scene-rendered'); });
+                }
+            }
+        })();
+    </script>
+
+    <script>
+        (function(){
+            const overlay = document.getElementById('info-overlay');
+            const closeBtn = document.getElementById('overlay-close');
+            if (closeBtn) closeBtn.addEventListener('click', ()=>{ overlay.style.display='none'; });
+            window.addEventListener('keydown', (e)=>{ 
+                if(e.key==='Escape'){ overlay.style.display='none'; }
+                // navigation shortcuts
+                if(e.key==='1') navigateTo(0,-2,45);
+                if(e.key==='2') navigateTo(1.5,1.2,-4);
+                if(e.key==='3') navigateTo(-4,3.5,-6);
+                if(e.key==='4') navigateTo(5.8,1.5,-0.45);
+                if(e.key==='5') navigateTo(-12,2,8);
+                if(e.key==='6') navigateTo(14,2.5,12);
+                if(e.key==='7') navigateTo(-18,1.5,25);
+                if(e.key==='8') navigateTo(12,2,28);
+                if(e.key==='9') navigateTo(-20,2,-15);
+                if(e.key==='0') navigateTo(18,1.8,-18);
+                if(e.key==='q' || e.key==='Q') navigateTo(8,2,35);
+                if(e.key==='w' || e.key==='W') navigateTo(-10,2.3,38);
+            });
+            // Click outside content closes overlay
+            overlay.addEventListener('click', (ev)=>{
+                if (ev.target===overlay) overlay.style.display='none';
+            });
+
+            // Expose navigation helper to buttons
+            window.navigateTo = function(x,y,z){
+                const rig = document.querySelector('#camera-rig');
+                if (!rig) return;
+                // Remove any previous nav animation
+                rig.removeAttribute('animation__nav');
+                // Set animated move using A-Frame animation component
+                const to = x + ' ' + y + ' ' + z;
+                rig.setAttribute('animation__nav', 'property: position; to: ' + to + '; dur: 800; easing: easeInOutQuad');
+                // Ensure final position after animation completes
+                setTimeout(()=>{ try{ rig.setAttribute('position', to); rig.removeAttribute('animation__nav'); }catch(e){} }, 900);
+            };
+        })();
+    </script>
+    <script>
+        // Prevent arrow keys from scrolling the page when the A-Frame scene is focused
+        window.addEventListener('keydown', function (e) {
+            const scene = document.querySelector('a-scene');
+            if (!scene) return;
+            const focused = (document.activeElement === scene);
+            const keys = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyW','KeyA','KeyS','KeyD'];
+            if (focused && keys.includes(e.code)) {
+                e.preventDefault();
+            }
+        }, true);
+    </script>
+    <script>
+        // Simple client-side auth: store users and login history in localStorage
+        (function(){
+            const RESERVED_ADMIN_USER = 'emma';
+            const ADMIN_SECRET_CLICKS = 5;
+            const LOCAL_USERS_KEY = 'nyero_local_users';
+            const LOCAL_LOGINS_KEY = 'nyero_local_logins';
+            window._authMode = window._authMode || 'login';
+            window._adminLoginMode = window._adminLoginMode || false;
+            let adminSecretCount = 0;
+            let adminSecretTimer = null;
+
+            function getLocalUsers(){
+                try { return JSON.parse(localStorage.getItem(LOCAL_USERS_KEY) || '{}'); } catch { return {}; }
+            }
+            function setLocalUsers(users){ localStorage.setItem(LOCAL_USERS_KEY, JSON.stringify(users || {})); }
+            function getLocalLogins(){
+                try { return JSON.parse(localStorage.getItem(LOCAL_LOGINS_KEY) || '[]'); } catch { return []; }
+            }
+            function setLocalLogins(events){ localStorage.setItem(LOCAL_LOGINS_KEY, JSON.stringify(events || [])); }
+            function appendLocalLoginEvent(username, type, isAdmin){
+                const events = getLocalLogins();
+                events.unshift({ username, type, isAdmin: !!isAdmin, timestamp: new Date().toISOString() });
+                if (events.length > 200) events.length = 200;
+                setLocalLogins(events);
+            }
+            function ensureLocalStore(){
+                const users = getLocalUsers();
+                if (!users[RESERVED_ADMIN_USER]) {
+                    users[RESERVED_ADMIN_USER] = { password: '07841', createdAt: new Date().toISOString(), isAdmin: true };
+                    setLocalUsers(users);
+                }
+                if (!localStorage.getItem(LOCAL_LOGINS_KEY)) {
+                    setLocalLogins([]);
+                }
+            }
+
+            async function apiRequest(path, method='GET', body=null){
+                const opts = { method, headers: { 'Content-Type': 'application/json' } };
+                if (body) opts.body = JSON.stringify(body);
+                try {
+                    const res = await fetch('/api' + path, opts);
+                    const data = await res.json().catch(() => null);
+                    if (!res.ok) {
+                        const message = data && data.error ? data.error : res.statusText;
+                        throw new Error(message || 'Backend request failed');
+                    }
+                    return data;
+                } catch (err) {
+                    console.warn('API request failed, falling back to local auth:', err.message);
+                    ensureLocalStore();
+                    const users = getLocalUsers();
+                    if (path === '/users') {
+                        const list = Object.entries(users).map(([username, data]) => ({ username, createdAt: data.createdAt, isAdmin: !!data.isAdmin }));
+                        return { users: list };
+                    }
+                    if (path === '/logins') {
+                        return { events: getLocalLogins() };
+                    }
+                    if (path === '/register' && method === 'POST') {
+                        const normalized = body.username.trim();
+                        if (users[normalized]) {
+                            throw new Error('Username already exists.');
+                        }
+                        users[normalized] = { password: body.password, createdAt: new Date().toISOString(), isAdmin: false };
+                        setLocalUsers(users);
+                        appendLocalLoginEvent(normalized, 'register', false);
+                        return { message: 'User registered successfully.' };
+                    }
+                    if (path === '/login' && method === 'POST') {
+                        const normalized = body.username.trim();
+                        const user = users[normalized];
+                        if (!user || user.password !== body.password) {
+                            throw new Error('Invalid username or password.');
+                        }
+                        appendLocalLoginEvent(normalized, user.isAdmin ? 'admin-login' : 'login', user.isAdmin);
+                        return { message: 'Login successful.', isAdmin: !!user.isAdmin };
+                    }
+                    throw err;
+                }
+            }
+
+            function getCurrentUser(){
+                return sessionStorage.getItem('nyero_current') || localStorage.getItem('nyero_current');
+            }
+
+            function setCurrentUser(username, remember){
+                clearCurrentUser();
+                if (remember) localStorage.setItem('nyero_current', username);
+                else sessionStorage.setItem('nyero_current', username);
+                document.getElementById('auth-modal').style.display = 'none';
+                document.getElementById('admin-login-modal').style.display = 'none';
+                document.body.classList.remove('not-signed-in');
+                document.body.classList.add('signed-in');
+                updateLogoutButton(true);
+                updateNavUser(username);
+                const adminBtn = document.getElementById('admin-panel-link');
+                if (adminBtn) {
+                    adminBtn.style.display = username === RESERVED_ADMIN_USER ? 'inline-block' : 'none';
+                }
+                // Hide loader immediately after successful login
+                const loader = document.getElementById('loader-overlay');
+                if (loader) {
+                    loader.style.display = 'none';
+                    loader.style.visibility = 'hidden';
+                    loader.style.pointerEvents = 'none';
+                }
+            }
+
+            function clearCurrentUser(){
+                sessionStorage.removeItem('nyero_current');
+                localStorage.removeItem('nyero_current');
+            }
+
+            function setMessage(id, text, color){
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.style.color = color || '#f88';
+                el.textContent = text;
+            }
+
+            function validateUsername(u){
+                const res = { ok: false, msg: '' };
+                if(!u){ res.msg='Username required'; return res; }
+                if(u.length < 3 || u.length > 20){ res.msg='Username must be 3–20 characters'; return res; }
+                if(!/^[A-Za-z0-9_.-]+$/.test(u)) { res.msg='Only letters, numbers, ., _, - allowed'; return res; }
+                if(/^[0-9]/.test(u)) { res.msg='Username cannot start with a number'; return res; }
+                if(u.toLowerCase() === RESERVED_ADMIN_USER && !window._adminLoginMode){ res.msg='This username is reserved'; return res; }
+                res.ok = true; return res;
+            }
+
+            function passwordStrength(p){
+                const res = { score:0, msg:'Very weak' };
+                if(!p || p.length===0){ res.msg='Password: —'; return res; }
+                let score = 0;
+                if(p.length >= 8) score++;
+                if(/[a-z]/.test(p) && /[A-Z]/.test(p)) score++;
+                if(/[0-9]/.test(p)) score++;
+                if(/[^A-Za-z0-9]/.test(p)) score++;
+                const weak = ['password','123456','12345678','qwerty','letmein','admin','welcome','iloveyou'];
+                if(weak.includes(p.toLowerCase())){ res.score = 0; res.msg='Too common'; return res; }
+                res.score = score;
+                res.msg = score <= 1 ? 'Weak' : score===2 ? 'Medium' : score===3 ? 'Strong' : 'Very strong';
+                return res;
+            }
+
+            function updateNavUser(username){ const navName = document.getElementById('nav-username'); if(navName) navName.textContent = username || '(not signed in)'; }
+            function updateLogoutButton(show){ const btn = document.getElementById('btn-logout'); if(btn) btn.style.display = show ? 'inline-block' : 'none'; }
+            function openAdminLoginModal(){ window._adminLoginMode = true; document.getElementById('auth-modal').style.display='none'; document.getElementById('admin-login-modal').style.display='flex'; document.getElementById('admin-panel-modal').style.display='none'; }
+            function closeAdminLoginModal(){ document.getElementById('admin-login-modal').style.display='none'; }
+            function enterAdminLoginMode(){ window._adminLoginMode = true; openAdminLoginModal(); }
+            function exitAdminLoginMode(){ window._adminLoginMode = false; closeAdminLoginModal(); }
+            function openAdminPanel(){ document.getElementById('admin-panel-modal').style.display='flex'; document.getElementById('admin-login-modal').style.display='none'; renderAdminPanel(); }
+            function closeAdminPanel(){ document.getElementById('admin-panel-modal').style.display='none'; }
+
+            async function updateStatsDisplay(){
+                try {
+                    const [usersResult, loginsResult] = await Promise.all([apiRequest('/users'), apiRequest('/logins')]);
+                    const users = usersResult.users || [];
+                    const events = loginsResult.events || [];
+                    const adminCount = users.filter(u => u.isAdmin).length;
+                    const userCount = users.length;
+                    const loginCount = events.length;
+                    const adminsEl = document.getElementById('stat-admins');
+                    const usersEl = document.getElementById('stat-users');
+                    const loginsEl = document.getElementById('stat-logins');
+                    if(adminsEl) adminsEl.textContent = adminCount;
+                    if(usersEl) usersEl.textContent = userCount;
+                    if(loginsEl) loginsEl.textContent = loginCount;
+                } catch (e) {
+                    console.warn('Could not update stats from backend:', e.message);
+                }
+            }
+
+            async function renderAdminPanel(){
+                try {
+                    const [usersResult, loginsResult] = await Promise.all([apiRequest('/users'), apiRequest('/logins')]);
+                    const users = usersResult.users || [];
+                    const events = loginsResult.events || [];
+                    const userList = document.getElementById('admin-user-list');
+                    const history = document.getElementById('admin-login-history');
+                    if(userList){
+                        const rows = users.map((user) => {
+                            const adminTag = user.isAdmin ? '<span class="admin-tag">ADMIN</span>' : '';
+                            return `<div class="admin-item">
+                                <strong>${user.username}</strong> ${adminTag}
+                                <div class="admin-meta">Created: ${user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'unknown'}</div>
+                            </div>`;
+                        });
+                        userList.innerHTML = rows.length ? rows.join('') : '<div style="color:#7fa8d9;padding:10px;">No registered users found.</div>';
+                    }
+                    if(history){
+                        const typeColors = { 'login': '#6ab4ff', 'admin-login': '#ffb86c', 'guest': '#9ac5ff', 'register': '#4a9eff' };
+                        const rows = events.slice(0, 50).map((event) => {
+                            const when = new Date(event.timestamp).toLocaleString();
+                            const typeColor = typeColors[event.type] || '#8ab4f8';
+                            return `<div class="admin-item">
+                                <strong>${event.username}</strong> <span style="color:${typeColor};font-weight:700;font-size:0.85rem;margin-left:6px;">[${event.type.toUpperCase()}]</span>
+                                <div class="admin-meta">${when}</div>
+                            </div>`;
+                        });
+                        history.innerHTML = rows.length ? rows.join('') : '<div style="color:#7fa8d9;padding:10px;">No login history recorded yet.</div>';
+                    }
+                } catch (err) {
+                    console.error('Failed to load admin panel data:', err.message);
+                }
+            }
+
+            async function showLoginHistory(username){
+                try {
+                    const result = await apiRequest('/logins');
+                    const events = result.events || [];
+                    const listEl = document.getElementById('login-history-list');
+                    const usernameEl = document.getElementById('history-username');
+                    if(usernameEl) usernameEl.textContent = username;
+                    if(listEl){
+                        const rows = events.slice(0, 30).map((event) => {
+                            const when = new Date(event.timestamp).toLocaleString();
+                            const typeClass = event.type === 'admin-login' ? 'admin' : event.type === 'register' ? 'register' : 'login';
+                            return `<div class="history-entry">
+                                <div>
+                                    <div class="history-user">${event.username}</div>
+                                    <span class="history-type ${typeClass}">${event.type.toUpperCase()}</span>
+                                </div>
+                                <div class="history-time">${when}</div>
+                            </div>`;
+                        });
+                        listEl.innerHTML = rows.length ? rows.join('') : '<div style="color:#7fa8d9;padding:10px;">No login history yet.</div>';
+                    }
+                    document.getElementById('login-history-modal').style.display='flex';
+                } catch (err) {
+                    setMessage('auth-message', 'Unable to load login history', '#f88');
+                }
+            }
+
+            async function registerUser(){
+                const u = (document.getElementById('auth-username').value||'').trim();
+                const p = (document.getElementById('auth-password').value||'');
+                const c = (document.getElementById('auth-confirm').value||'');
+                const msgId = 'auth-message';
+                const vu = validateUsername(u);
+                if(!vu.ok){ setMessage(msgId, vu.msg); return; }
+                if(u.toLowerCase() === RESERVED_ADMIN_USER){ setMessage(msgId, 'This username is reserved.'); return; }
+                if(p.length < 8){ setMessage(msgId, 'Password must be at least 8 characters'); return; }
+                if(p !== c){ setMessage(msgId, 'Passwords do not match'); return; }
+                const ps = passwordStrength(p);
+                if(ps.score < 2){ setMessage(msgId, 'Choose a stronger password (' + ps.msg + ')'); return; }
+                try {
+                    await apiRequest('/register', 'POST', { username: u, password: p });
+                    setMessage(msgId, 'Account created! Please log in to continue.', '#8f8');
+                    toggleAuthMode('login');
+                } catch (err) {
+                    setMessage(msgId, err.message || 'Registration failed');
+                }
+            }
+
+            async function loginUser(){
+                const u = (document.getElementById('auth-username').value||'').trim();
+                const p = (document.getElementById('auth-password').value||'');
+                const msgId = 'auth-message';
+                if(!u || !p){ setMessage(msgId, 'Enter username and password'); return; }
+                const vu = validateUsername(u);
+                if(!vu.ok){ setMessage(msgId, 'Invalid username'); return; }
+                try {
+                    const result = await apiRequest('/login', 'POST', { username: u, password: p });
+                    setMessage(msgId, result.message || 'Login successful', '#8f8');
+                    const isAdmin = !!result.isAdmin;
+                    setCurrentUser(u, document.getElementById('auth-remember').checked);
+                    if(isAdmin){ const btn = document.getElementById('admin-panel-link'); if(btn) btn.style.display='inline-block'; }
+                } catch (err) {
+                    setMessage(msgId, err.message || 'Invalid username or password');
+                }
+            }
+
+            function toggleAuthMode(mode){
+                const card = document.querySelector('.auth-card');
+                const registerTab = document.getElementById('auth-tab-register');
+                const loginTab = document.getElementById('auth-tab-login');
+                const confirmRow = document.querySelector('.auth-confirm-row');
+                const submit = document.getElementById('btn-submit');
+                const authTitle = document.querySelector('.auth-title');
+                const authSubtitle = document.querySelector('.auth-subtitle');
+                const switchLink = document.getElementById('auth-switch-link');
+                if(!card || !submit || !authTitle || !authSubtitle || !switchLink) return;
+                if(mode === 'login'){
+                    card.dataset.authMode = 'login';
+                    registerTab.classList.remove('active');
+                    loginTab.classList.add('active');
+                    if(confirmRow) confirmRow.style.display = 'none';
+                    submit.textContent = 'Login';
+                    authTitle.textContent = 'Welcome back';
+                    authSubtitle.textContent = 'Sign in with your account to continue exploring.';
+                    switchLink.textContent = 'Create account instead';
+                    window._authMode = 'login';
+                } else {
+                    card.dataset.authMode = 'register';
+                    registerTab.classList.add('active');
+                    loginTab.classList.remove('active');
+                    if(confirmRow) confirmRow.style.display = 'grid';
+                    submit.textContent = 'Create account';
+                    authTitle.textContent = 'Welcome to Nyero AVR';
+                    authSubtitle.textContent = 'Create your account first, then sign in to step into the virtual site.';
+                    switchLink.textContent = 'Already registered? Sign in';
+                    window._authMode = 'register';
+                }
+                setMessage('auth-message', '');
+            }
+
+            async function handleAdminLogin(){
+                const u = (document.getElementById('admin-username').value||'').trim();
+                const p = (document.getElementById('admin-password').value||'');
+                if(u !== RESERVED_ADMIN_USER){ setMessage('admin-message', 'Only the admin user may access this panel'); return; }
+                try {
+                    const result = await apiRequest('/login', 'POST', { username: u, password: p });
+                    if(result.isAdmin){
+                        setMessage('admin-message', 'Admin login successful', '#8f8');
+                        setCurrentUser(u, true);
+                        openAdminPanel();
+                    } else {
+                        setMessage('admin-message', 'Invalid admin credentials');
+                    }
+                } catch (err) {
+                    setMessage('admin-message', err.message || 'Invalid admin credentials');
+                }
+            }
+
+            function continueAsGuest(){
+                setMessage('auth-message', 'Continuing as guest', '#8f8');
+                setCurrentUser('guest', false);
+            }
+
+            function logoutUser(){
+                clearCurrentUser();
+                window._adminLoginMode = false;
+                document.body.classList.add('not-signed-in');
+                document.body.classList.remove('signed-in');
+                const loader = document.getElementById('loader-overlay');
+                document.getElementById('auth-modal').style.display='flex';
+                document.getElementById('admin-login-modal').style.display='none';
+                document.getElementById('admin-panel-modal').style.display='none';
+                document.getElementById('login-history-modal').style.display='none';
+                if (loader) {
+                    loader.style.display = 'none';
+                    loader.style.visibility = 'hidden';
+                    loader.style.pointerEvents = 'none';
+                }
+                setMessage('auth-message', 'Logged out — please sign in', '#f88');
+                updateLogoutButton(false);
+                updateNavUser(null);
+                const btn = document.getElementById('admin-panel-link'); if(btn) btn.style.display='none';
+            }
+
+            function revealAdminLink(){
+                adminSecretCount++;
+                if(adminSecretTimer) clearTimeout(adminSecretTimer);
+                adminSecretTimer = setTimeout(() => { adminSecretCount = 0; }, 3000);
+                if(adminSecretCount >= ADMIN_SECRET_CLICKS){
+                    const btn = document.getElementById('admin-panel-link');
+                    if(btn){ btn.style.display='inline-block'; btn.textContent='Admin Login'; }
+                    adminSecretCount = 0;
+                }
+            }
+
+            // Expose all critical functions to global scope
+            window.logoutUser = logoutUser;
+            window.openAdminPanel = openAdminPanel;
+            window.closeAdminPanel = closeAdminPanel;
+            window.openAdminLoginModal = openAdminLoginModal;
+            window.closeAdminLoginModal = closeAdminLoginModal;
+            window.exitAdminLoginMode = exitAdminLoginMode;
+            window.continueAsGuest = continueAsGuest;
+            window.registerUser = registerUser;
+            window.loginUser = loginUser;
+            window.toggleAuthMode = toggleAuthMode;
+            window.handleAdminLogin = handleAdminLogin;
+            window.showLoginHistory = showLoginHistory;
+            window.renderAdminPanel = renderAdminPanel;
+            window.getCurrentUser = getCurrentUser;
+            window.setCurrentUser = setCurrentUser;
+            window.validateUsername = validateUsername;
+            window.passwordStrength = passwordStrength;
+
+            window.addEventListener('load', async ()=>{
+                // Ensure data directory and files exist
+                updateStatsDisplay();
+                
+                // Set up all event listeners
+                const guest = document.getElementById('btn-guest');
+                const adminLogin = document.getElementById('btn-admin-login');
+                const adminCancel = document.getElementById('btn-admin-cancel');
+                const adminClose = document.getElementById('admin-close-panel');
+                const adminLogoutPanel = document.getElementById('admin-logout-panel');
+                const adminPanelLink = document.getElementById('admin-panel-link');
+                const authAdminTrigger = document.getElementById('admin-login-trigger');
+                const adminSecret = document.getElementById('admin-secret-trigger');
+                const historyLogout = document.getElementById('history-logout-btn');
+                
+                if(guest) guest.addEventListener('click', (e)=>{ e.preventDefault(); continueAsGuest(); });
+                if(adminLogin) adminLogin.addEventListener('click', (e)=>{ e.preventDefault(); handleAdminLogin(); });
+                if(adminCancel) adminCancel.addEventListener('click', (e)=>{ e.preventDefault(); exitAdminLoginMode(); });
+                if(adminClose) adminClose.addEventListener('click', (e)=>{ e.preventDefault(); closeAdminPanel(); });
+                if(adminLogoutPanel) adminLogoutPanel.addEventListener('click', (e)=>{ e.preventDefault(); logoutUser(); });
+                if(adminPanelLink) adminPanelLink.addEventListener('click', (e)=>{ e.preventDefault(); openAdminPanel(); });
+                if(authAdminTrigger) authAdminTrigger.addEventListener('click', (e)=>{ e.preventDefault(); openAdminLoginModal(); });
+                if(adminSecret) adminSecret.addEventListener('click', (e)=>{ e.preventDefault(); revealAdminLink(); });
+                if(historyLogout) historyLogout.addEventListener('click', (e)=>{ e.preventDefault(); logoutUser(); });
+
+                // Check if user is already logged in
+                const currentUser = getCurrentUser();
+                if (currentUser) {
+                    // User was previously logged in, restore session
+                    setCurrentUser(currentUser, true);
+                    if (currentUser === RESERVED_ADMIN_USER) {
+                        const btn = document.getElementById('admin-panel-link');
+                        if(btn) btn.style.display='inline-block';
+                    }
+                } else {
+                    // No user logged in, show auth screen
+                    document.body.classList.add('not-signed-in');
+                    const authModal = document.getElementById('auth-modal');
+                    const loader = document.getElementById('loader-overlay');
+                    if(authModal) {
+                        authModal.style.display = 'flex';
+                    }
+                    if (loader) {
+                        loader.style.display = 'none';
+                        loader.style.visibility = 'hidden';
+                        loader.style.pointerEvents = 'none';
+                    }
+                    updateLogoutButton(false);
+                }
+                
+                const sav = document.getElementById('savanna-sound');
+                if(sav) sav.setAttribute('sound','volume:0');
+
+                // Set up form input validation
+                const uname = document.getElementById('auth-username');
+                const pwd = document.getElementById('auth-password');
+                const unameHint = document.getElementById('username-hint');
+                const pwdStrength = document.getElementById('pwd-strength');
+                if(uname){ uname.addEventListener('input', ()=>{ const v = validateUsername(uname.value||''); unameHint.textContent = v.ok ? 'Username looks good' : v.msg; unameHint.style.color = v.ok ? '#8f8' : '#f88'; }); }
+                if(pwd){ pwd.addEventListener('input', ()=>{ const s = passwordStrength(pwd.value||''); pwdStrength.textContent = 'Password: ' + s.msg; pwdStrength.style.color = s.score>=3 ? '#8f8' : s.score===2 ? '#ffc107' : '#f88'; }); }
+
+                // Set up auth form controls
+                const submitBtn = document.getElementById('btn-submit');
+                const registerTab = document.getElementById('auth-tab-register');
+                const loginTab = document.getElementById('auth-tab-login');
+                const switchLink = document.getElementById('auth-switch-link');
+                if(submitBtn) submitBtn.addEventListener('click', (e) => { e.preventDefault(); if(window._authMode === 'login') loginUser(); else registerUser(); });
+                if(registerTab) registerTab.addEventListener('click', (e) => { e.preventDefault(); toggleAuthMode('register'); });
+                if(loginTab) loginTab.addEventListener('click', (e) => { e.preventDefault(); toggleAuthMode('login'); });
+                if(switchLink) switchLink.addEventListener('click', (e) => { e.preventDefault(); toggleAuthMode(window._authMode === 'login' ? 'register' : 'login'); });
+                
+                // Initialize auth UI to the current auth mode
+                toggleAuthMode(window._authMode || 'login');
+            });
+        })();
+    </script>
+    <script>
+        // Ensure the A-Frame scene receives keyboard focus so WASD works immediately
+        (function(){
+            function focusScene(){
+                const scene = document.querySelector('a-scene');
+                if (!scene) return;
+                try{ scene.focus(); }catch(e){}
+                // show a brief hint
+                const hintId = 'aframe-hint';
+                if (!document.getElementById(hintId)){
+                    const d = document.createElement('div');
+                    d.id = hintId;
+                    d.style.position='fixed'; d.style.right='12px'; d.style.bottom='12px';
+                    d.style.background='rgba(0,0,0,0.6)'; d.style.color='#fff'; d.style.padding='8px 10px';
+                    d.style.borderRadius='8px'; d.style.zIndex=9999; d.style.fontFamily='Arial, sans-serif';
+                    d.innerText = 'Click the scene to enable mouse look. Use WASD to move.';
+                    document.body.appendChild(d);
+                    setTimeout(()=>{ d.style.transition='opacity 0.5s'; d.style.opacity='0'; setTimeout(()=>d.remove(),1500); },4000);
+                }
+            }
+            if (document.readyState === 'complete') focusScene(); else window.addEventListener('load', focusScene);
+        })();
+    </script>
+    <script>
+        // Fallback keyboard movement when WASD-controls or pointer lock isn't available
+        AFRAME.registerComponent('keyboard-move-fallback', {
+            schema: { speed: {type: 'number', default: 0.1} },
+            init: function () {
+                this.keys = {};
+                const onKey = (e, v) => { this.keys[e.code] = v; };
+                window.addEventListener('keydown', (e)=> onKey(e, true));
+                window.addEventListener('keyup', (e)=> onKey(e, false));
+            },
+            tick: function (time, delta) {
+                const rig = this.el; // component attached to rig
+                if (!rig) return;
+                const camera = rig.querySelector('[camera]');
+                if (!camera) return;
+                const speed = this.data.speed * (delta/16.666);
+                // compute forward/right vectors from the camera orientation
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.object3D.quaternion);
+                forward.y = 0; forward.normalize();
+                const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.object3D.quaternion);
+                right.y = 0; right.normalize();
+                const move = new THREE.Vector3();
+                if (this.keys['KeyW'] || this.keys['ArrowUp']) move.add(forward);
+                if (this.keys['KeyS'] || this.keys['ArrowDown']) move.sub(forward);
+                if (this.keys['KeyA'] || this.keys['ArrowLeft']) move.sub(right);
+                if (this.keys['KeyD'] || this.keys['ArrowRight']) move.add(right);
+                if (move.lengthSq() > 0) {
+                    move.normalize();
+                    move.multiplyScalar(speed);
+                    rig.object3D.position.add(move);
+                }
+            }
+        });
+
+        AFRAME.registerComponent('mobile-touch-move', {
+            schema: { speed: {type: 'number', default: 0.08} },
+            init: function () {
+                this.actions = { forward: false, back: false, left: false, right: false };
+                this.move = new THREE.Vector3();
+                window.addEventListener('mobile-move', (event) => {
+                    const detail = event.detail || {};
+                    if (detail.dir && typeof detail.state === 'boolean') {
+                        this.actions[detail.dir] = detail.state;
+                    }
+                });
+            },
+            tick: function (time, delta) {
+                const rig = this.el;
+                if (!rig) return;
+                const camera = rig.querySelector('[camera]');
+                if (!camera) return;
+                const speed = this.data.speed * (delta/16.666);
+                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.object3D.quaternion);
+                forward.y = 0; forward.normalize();
+                const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.object3D.quaternion);
+                right.y = 0; right.normalize();
+                this.move.set(0, 0, 0);
+                if (this.actions.forward) this.move.add(forward);
+                if (this.actions.back) this.move.sub(forward);
+                if (this.actions.left) this.move.sub(right);
+                if (this.actions.right) this.move.add(right);
+                if (this.move.lengthSq() > 0) {
+                    this.move.normalize().multiplyScalar(speed);
+                    rig.object3D.position.add(this.move);
+                }
+            }
+        });
+
+        // Attach fallback movement to the camera rig
+        (function(){
+            function attachFallback(){
+                const rig = document.querySelector('#camera-rig');
+                if (!rig) return;
+                if (!rig.hasAttribute('keyboard-move-fallback')) {
+                    rig.setAttribute('keyboard-move-fallback', '');
+                }
+                if (!rig.hasAttribute('mobile-touch-move')) {
+                    rig.setAttribute('mobile-touch-move', '');
+                }
+            }
+            if (document.readyState === 'complete') attachFallback(); else window.addEventListener('load', attachFallback);
+        })();
+
+        (function(){
+            const buttons = document.querySelectorAll('#mobile-controls button');
+            const sendMove = (dir, state) => {
+                window.dispatchEvent(new CustomEvent('mobile-move', { detail: { dir, state } }));
+            };
+            buttons.forEach((button) => {
+                const dir = button.dataset.dir;
+                button.addEventListener('touchstart', (event) => { event.preventDefault(); sendMove(dir, true); });
+                button.addEventListener('touchend', (event) => { event.preventDefault(); sendMove(dir, false); });
+                button.addEventListener('mousedown', (event) => { event.preventDefault(); sendMove(dir, true); });
+                button.addEventListener('mouseup', (event) => { event.preventDefault(); sendMove(dir, false); });
+                button.addEventListener('mouseleave', (event) => { event.preventDefault(); sendMove(dir, false); });
+            });
+            window.addEventListener('touchend', () => {
+                buttons.forEach((button) => sendMove(button.dataset.dir, false));
+            }, { passive: false });
+            window.addEventListener('mouseup', () => {
+                buttons.forEach((button) => sendMove(button.dataset.dir, false));
+            });
+        })();
+
+        // ========== ENHANCED USER INTERACTION FEATURES ==========
+        
+        // Settings Management
+        const SETTINGS_KEY = 'nyero_settings';
+        const DEFAULT_SETTINGS = {
+            particles: true, shadows: true, fog: true, audio: true, labels: true, beacon: true, textSize: 1.0, volume: 50, minimap: false, perfMonitor: false
+        };
+        
+        function loadSettings() {
+            const saved = localStorage.getItem(SETTINGS_KEY);
+            return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : DEFAULT_SETTINGS;
+        }
+        
+        function saveSettings(settings) {
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        }
+        
+        function toggleSetting(element) {
+            element.classList.toggle('active');
+            const toggleId = element.id;
+            const settings = loadSettings();
+            
+            if (toggleId === 'toggle-particles') { settings.particles = element.classList.contains('active'); }
+            if (toggleId === 'toggle-shadows') { settings.shadows = element.classList.contains('active'); }
+            if (toggleId === 'toggle-fog') { settings.fog = element.classList.contains('active'); }
+            if (toggleId === 'toggle-audio') { settings.audio = element.classList.contains('active'); toggleAudio(); }
+            if (toggleId === 'toggle-labels') { settings.labels = element.classList.contains('active'); }
+            if (toggleId === 'toggle-beacon') { settings.beacon = element.classList.contains('active'); }
+            
+            saveSettings(settings);
+            applyGraphicsSettings(settings);
+        }
+        
+        function setVolume(value) {
+            const settings = loadSettings();
+            settings.volume = value;
+            saveSettings(settings);
+            const soundEl = document.querySelector('a-entity[sound]');
+            if (soundEl) soundEl.setAttribute('sound', 'volume:' + (value / 100));
+            if (window._ambientMaster) window._ambientMaster.gain.value = (value / 100) * 0.02;
+        }
+        
+        function setTextSize(value) {
+            const settings = loadSettings();
+            settings.textSize = value;
+            saveSettings(settings);
+            document.documentElement.style.setProperty('--text-scale', value);
+            const textElements = document.querySelectorAll('a-text');
+            textElements.forEach(el => {
+                const currentScale = el.getAttribute('scale');
+                if (currentScale) {
+                    const [x, y, z] = currentScale.split(' ').map(Number);
+                    el.setAttribute('scale', `${x * value} ${y * value} ${z * value}`);
+                }
+            });
+        }
+        
+        function applyGraphicsSettings(settings) {
+            const scene = document.querySelector('a-scene');
+            if (!scene) return;
+            
+            if (!settings.shadows) {
+                scene.setAttribute('shadow', 'cast: false');
+            }
+            if (!settings.fog) {
+                scene.setAttribute('fog', 'type: none');
+            }
+        }
+        
+        function closeSettings() {
+            document.getElementById('settings-modal').style.display = 'none';
+        }
+        
+        function closeHelp() {
+            document.getElementById('help-modal').style.display = 'none';
+        }
+        
+        function openMapModal() {
+            document.getElementById('map-modal').style.display = 'flex';
+        }
+        
+        function closeMapModal() {
+            document.getElementById('map-modal').style.display = 'none';
+        }
+        
+        function openArchaeologyGuide() {
+            // Open the archaeology guide in a new tab or modal
+            const guideWindow = window.open('', 'ArchaeologyGuide', 'width=900,height=700,scrollbars=yes');
+            guideWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Nyero Rock - Authentic Archaeological Guide</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; color: #333; line-height: 1.6; }
+                        .header { background: linear-gradient(135deg, #8b4513, #a0522d); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+                        h1 { margin: 0; }
+                        .section { background: white; padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 4px solid #8b4513; }
+                        .shelter { background: #fffaf0; padding: 15px; margin: 10px 0; border-radius: 8px; border: 1px solid #daa520; }
+                        .shelter h3 { color: #8b4513; margin-top: 0; }
+                        .details { background: #f9f9f9; padding: 10px; border-radius: 5px; margin: 10px 0; font-size: 0.9em; }
+                        .highlight { background: #fff8dc; padding: 2px 4px; border-radius: 3px; }
+                        em { color: #8b4513; font-weight: bold; }
+                        .button { background: #8b4513; color: white; padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; margin: 5px 5px 5px 0; }
+                        .button:hover { background: #a0522d; }
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>🎨 Nyero Rock Art Site - Authentic Archaeological Guide</h1>
+                        <p><strong>Kumi District, Eastern Uganda | Coordinates: 1.3°N, 33.9°E</strong></p>
+                    </div>
+                    
+                    <div class="section">
+                        <h2>📍 SITE OVERVIEW</h2>
+                        <p>Nyero Rock is one of East Africa's most significant rock art sites, featuring six documented shelters with paintings spanning <em>1,000-4,000 years</em> of continuous human artistic expression. Located in Kumi District, eastern Uganda, it represents an unbroken cultural heritage from ancient hunter-gatherer communities.</p>
+                    </div>
+                    
+                    <div class="shelter">
+                        <h3>🎨 SHELTER 1: White Concentric Circles & Acacia Pod Motifs</h3>
+                        <div class="details">
+                            <strong>Artistic Details:</strong> Six sets of concentric circles + acacia pod designs | <em>Pigment:</em> White clay (kaolin) | <em>Age:</em> 1,500-2,500 years | <em>Technique:</em> Finger-painting
+                        </div>
+                        <div class="details">
+                            <strong>Significance:</strong> Concentric circles represent life cycles and cosmological order. Acacia pods symbolize food sources and prosperity. Created by ancient hunter-gatherer populations for ceremonial purposes.
+                        </div>
+                    </div>
+                    
+                    <div class="shelter">
+                        <h3>🎨 SHELTER 2: Main Shelter - Red Ochre Complex (40+ Motifs)</h3>
+                        <div class="details">
+                            <strong>Artistic Details:</strong> 40+ motifs | <em>Pigment:</em> Red ochre (iron oxide) | <em>Age:</em> 2,000-4,000 years | <em>Complexity:</em> Most elaborate
+                        </div>
+                        <div class="details">
+                            <strong>Significance:</strong> THE most important shelter at the site. Red ochre indicates life-force and ancestral veneration. Canoe/acacia pod designs represent hunting success and travel. This primary shelter likely served as community gathering place for ceremonies, teaching, and rituals.
+                        </div>
+                    </div>
+                    
+                    <div class="shelter">
+                        <h3>🎨 SHELTER 3: White Concentric Circles with Double Curved Designs</h3>
+                        <div class="details">
+                            <strong>Artistic Details:</strong> Concentric circles + double curved lines + compartmented sections | <em>Pigment:</em> White clay | <em>Age:</em> 1,500-2,500 years | <em>Unique:</em> Style not found elsewhere
+                        </div>
+                    </div>
+                    
+                    <div class="shelter">
+                        <h3>🎨 SHELTER 4: Red Ochre Circles & Conical Shapes</h3>
+                        <div class="details">
+                            <strong>Artistic Details:</strong> Concentric circles + conical/triangular shapes + linear patterns | <em>Age:</em> 2,000-3,000 years | <em>South-facing:</em> Possibly indicates astronomical observation
+                        </div>
+                    </div>
+                    
+                    <div class="shelter">
+                        <h3>🎨 SHELTER 5: Red Geometric & Linear Compositions</h3>
+                        <div class="details">
+                            <strong>Artistic Details:</strong> Circular forms + linear patterns | <em>Techniques:</em> Mixed - brush and finger-painting | <em>Age:</em> 1,500-2,500 years | <em>Most Accessible:</em> Nearest to Nyero Primary School
+                        </div>
+                    </div>
+                    
+                    <div class="shelter">
+                        <h3>🎨 SHELTER 6: Hilltop Summit - Red Ochre Complex Design (CRITICAL PRESERVATION)</h3>
+                        <div class="details">
+                            <strong>Artistic Details:</strong> Red ovals + L-shaped patterns + outlined crosses + small circles | <em>Age:</em> 1,000-2,500 years | <em>Complexity:</em> Most intricate composition
+                        </div>
+                        <div class="details">
+                            <strong>Significance:</strong> Located at summit with 360° panoramic views. Sacred ceremonial site for elite/spiritual leaders. <em>⚠️ CRITICAL PRESERVATION ISSUE:</em> Most exposed to weather - urgent documentation needed.
+                        </div>
+                    </div>
+                    
+                    <div class="section">
+                        <h2>🔬 ARCHAEOLOGICAL RESEARCH</h2>
+                        <p><strong>Dating Methods:</strong> Radiocarbon dating, pigment analysis, and archaeological context place paintings within Iron Age period (0-4000 years ago)</p>
+                        <p><strong>Key Findings:</strong> Continuous artistic tradition | Advanced pigment knowledge | Spiritual/cosmological significance | Evidence of specialized artists | Astronomical awareness in shelter design</p>
+                    </div>
+                    
+                    <div class="section">
+                        <h2>🛡️ PRESERVATION STATUS</h2>
+                        <p><strong>Threats:</strong> Natural weathering | Increased tourist pressure | Water seepage | Potential climate change impacts</p>
+                        <p><strong>Conservation Priority:</strong> Shelter 6 (hilltop) requires urgent attention</p>
+                    </div>
+                    
+                    <div class="section">
+                        <h2>📍 VISITING INFORMATION</h2>
+                        <p><strong>Best Time:</strong> June-August or December-February (dry seasons)</p>
+                        <p><strong>Access:</strong> 15km north of Soroti town via Nyero Primary School</p>
+                        <p><strong>Guides:</strong> Local guides available through Nyero Primary School</p>
+                        <p><strong>⚠️ Preservation:</strong> Do not touch painted surfaces - oils from skin damage ancient pigments</p>
+                    </div>
+                    
+                    <button class="button" onclick="window.print()">🖨️ Print Guide</button>
+                    <button class="button" onclick="window.close()">Close</button>
+                </body>
+                </html>
+            `);
+            guideWindow.document.close();
+        }
+        
+        function copyCoordinates() {
+            const coords = "1.3°N, 33.9°E";
+            navigator.clipboard.writeText(coords).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅ Copied to Clipboard!';
+                btn.style.background = 'rgba(100,200,100,0.2)';
+                btn.style.borderColor = 'rgba(100,200,100,0.5)';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = 'rgba(255,255,255,0.1)';
+                    btn.style.borderColor = 'rgba(100,160,255,0.3)';
+                }, 2000);
+            }).catch(() => {
+                alert('Coordinates: 1.3°N, 33.9°E');
+            });
+        }
+        
+        // Close map modal when pressing Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.getElementById('map-modal').style.display = 'none';
+            }
+        });
+        
+        // Minimap
+        function initMinimap() {
+            const canvas = document.getElementById('minimap-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            canvas.width = 140;
+            canvas.height = 140;
+            
+            function drawMinimap() {
+                const rig = document.querySelector('#camera-rig');
+                if (!rig) return;
+                const pos = rig.object3D.position;
+                const camera = rig.querySelector('[camera]');
+                const cameraQuat = camera ? camera.object3D.quaternion : null;
+                
+                ctx.fillStyle = '#1a2a4a';
+                ctx.fillRect(0, 0, 140, 140);
+                ctx.strokeStyle = '#4a9eff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(1, 1, 138, 138);
+                
+                // Scale factor for minimap (-100 to 100 world units -> minimap)
+                const scale = 140 / 200;
+                const centerX = 70, centerY = 70;
+                
+                // Draw player
+                const playerX = centerX + (pos.x * scale);
+                const playerY = centerY + (pos.z * scale);
+                ctx.fillStyle = '#4a9eff';
+                ctx.fillRect(playerX - 3, playerY - 3, 6, 6);
+                
+                // Draw direction indicator
+                if (cameraQuat) {
+                    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(cameraQuat);
+                    ctx.strokeStyle = '#ffb86c';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(playerX, playerY);
+                    ctx.lineTo(playerX + forward.x * 15, playerY + forward.z * 15);
+                    ctx.stroke();
+                }
+                
+                // Draw painting locations
+                const paintings = [
+                    {x: 1.5, z: -4, color: '#ffcc00'}, {x: -4, z: -6, color: '#75e1ff'},
+                    {x: 5.8, z: -0.45, color: '#9eff76'}, {x: -12, z: 8, color: '#ff6b9d'},
+                    {x: 14, z: 12, color: '#ffa500'}, {x: -18, z: 25, color: '#9d5eff'},
+                    {x: 12, z: 28, color: '#00d9ff'}, {x: -20, z: -15, color: '#4ecca3'},
+                    {x: 18, z: -18, color: '#ff9e64'}, {x: 8, z: 35, color: '#f3b9d9'},
+                    {x: -10, z: 38, color: '#a8e6cf'}
+                ];
+                
+                paintings.forEach(p => {
+                    ctx.fillStyle = p.color;
+                    const px = centerX + (p.x * scale);
+                    const pz = centerY + (p.z * scale);
+                    ctx.beginPath();
+                    ctx.arc(px, pz, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                
+                requestAnimationFrame(drawMinimap);
+            }
+            drawMinimap();
+        }
+        
+        function toggleMinimap() {
+            const minimap = document.getElementById('minimap');
+            const toggle = document.getElementById('toggle-minimap');
+            const settings = loadSettings();
+            
+            settings.minimap = !settings.minimap;
+            saveSettings(settings);
+            
+            minimap.style.display = settings.minimap ? 'block' : 'none';
+            if (toggle) toggle.classList.toggle('active', settings.minimap);
+            
+            if (settings.minimap && !window._minimapInitialized) {
+                initMinimap();
+                window._minimapInitialized = true;
+            }
+        }
+        
+        // Progress Tracking
+        const VISITED_PAINTINGS = 'nyero_visited';
+        function initProgressTracker() {
+            const paintingIds = ['painting-nyero1', 'painting-sun', 'painting-canoe', 'painting-abstract', 'painting-handprints', 'painting-circles'];
+            
+            paintingIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('click', () => {
+                        const visited = JSON.parse(localStorage.getItem(VISITED_PAINTINGS) || '[]');
+                        if (!visited.includes(id)) {
+                            visited.push(id);
+                            localStorage.setItem(VISITED_PAINTINGS, JSON.stringify(visited));
+                            updateProgressDisplay();
+                            showToast(`Added ${id.replace('painting-', '')} to your collection!`);
+                        }
+                    });
+                }
+            });
+            updateProgressDisplay();
+        }
+        
+        function updateProgressDisplay() {
+            const visited = JSON.parse(localStorage.getItem(VISITED_PAINTINGS) || '[]');
+            const progressContainer = document.getElementById('progress-container');
+            const progressFill = document.getElementById('progress-fill');
+            const progressCount = document.getElementById('progress-count');
+            const progressTotal = document.getElementById('progress-total');
+            
+            if (progressContainer) progressContainer.style.display = 'block';
+            if (progressCount) progressCount.textContent = visited.length;
+            if (progressFill) progressFill.style.width = (visited.length / 6 * 100) + '%';
+        }
+        
+        // Search Functionality
+        const PAINTINGS_DATA = [
+            {id: 'painting-nyero1', name: 'Nyero 1 Shelter', tags: 'white concentric circles acacia pods'},
+            {id: 'painting-sun', name: 'Nyero 2 Shelter', tags: 'red motifs canoe main shelter forty'},
+            {id: 'painting-canoe', name: 'Nyero 3 Shelter', tags: 'white circles curved designs compartments'},
+            {id: 'painting-abstract', name: 'Nyero 4 Shelter', tags: 'red concentric conical shapes lines'},
+            {id: 'painting-handprints', name: 'Nyero 5 Shelter', tags: 'red geometric circular linear'},
+            {id: 'painting-circles', name: 'Nyero 6 Shelter', tags: 'red ovals cross L-shape high hilltop'}
+        ];
+        
+        function initSearch() {
+            const searchInput = document.getElementById('search-input');
+            const searchResults = document.getElementById('search-results');
+            
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    const query = e.target.value.toLowerCase();
+                    if (!query) {
+                        searchResults.classList.remove('show');
+                        return;
+                    }
+                    
+                    const results = PAINTINGS_DATA.filter(p => 
+                        p.name.toLowerCase().includes(query) || 
+                        p.tags.toLowerCase().includes(query)
+                    );
+                    
+                    searchResults.innerHTML = results.map(r => 
+                        `<div class="search-result" onclick="navigateTo(document.getElementById('${r.id}').getAttribute('data-pos-x'), document.getElementById('${r.id}').getAttribute('data-pos-y'), document.getElementById('${r.id}').getAttribute('data-pos-z')); document.getElementById('search-results').classList.remove('show');">${r.name}</div>`
+                    ).join('');
+                    
+                    if (results.length > 0) searchResults.classList.add('show');
+                });
+            }
+            document.getElementById('search-container').style.display = 'block';
+        }
+        
+        // Toast Notifications
+        function showToast(message, duration = 3000) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.animation = 'slide-in 0.3s ease reverse';
+                setTimeout(() => toast.remove(), 300);
+            }, duration);
+        }
+        
+        // Guided Tour Mode
+        let tourActive = false;
+        let tourStep = 0;
+        const tourSequence = [
+            {x: 0, y: -2, z: 45, name: 'Welcome', desc: 'Welcome to Nyero Rock Paintings - Kumi District, Uganda'},
+            {x: -8, y: 1.2, z: 0, name: 'Nyero 1', desc: 'White concentric circles & acacia pods'},
+            {x: 5, y: 1.2, z: -8, name: 'Nyero 2', desc: '40+ red motifs - main shelter'},
+            {x: -12, y: 1.2, z: 10, name: 'Nyero 3', desc: 'White circles with curved designs'},
+            {x: 10, y: 1.2, z: 8, name: 'Nyero 4', desc: 'Red circles, cones & lines'},
+            {x: -5, y: 1.2, z: 15, name: 'Nyero 5', desc: 'Red geometric motifs'},
+            {x: -15, y: 1.2, z: -5, name: 'Nyero 6', desc: 'Red ovals, L-shapes & cross - hilltop'}
+        ];
+        
+        function startGuidedTour() {
+            tourActive = !tourActive;
+            tourStep = 0;
+            const toggle = document.getElementById('toggle-tour');
+            if (toggle) toggle.classList.toggle('active');
+            
+            if (tourActive) {
+                showToast('Guided tour started! Follow the highlighted paintings.');
+                advanceTour();
+            } else {
+                showToast('Guided tour ended.');
+            }
+        }
+        
+        function advanceTour() {
+            if (!tourActive || tourStep >= tourSequence.length) {
+                tourActive = false;
+                showToast('Tour complete! You have explored all paintings.');
+                return;
+            }
+            
+            const step = tourSequence[tourStep];
+            navigateTo(step.x, step.y, step.z);
+            showToast(`📍 ${step.name}: ${step.desc}`, 4000);
+            tourStep++;
+        }
+        
+        // Performance Monitor
+        let frameCount = 0, lastTime = performance.now(), fps = 60;
+        function updatePerfMonitor() {
+            frameCount++;
+            const now = performance.now();
+            if (now >= lastTime + 1000) {
+                fps = frameCount;
+                document.getElementById('perf-fps').textContent = fps;
+                frameCount = 0;
+                lastTime = now;
+            }
+            
+            const entities = document.querySelectorAll('a-entity').length;
+            document.getElementById('perf-entities').textContent = entities;
+            requestAnimationFrame(updatePerfMonitor);
+        }
+        
+        function togglePerfMonitor() {
+            const monitor = document.getElementById('perf-monitor');
+            const settings = loadSettings();
+            settings.perfMonitor = !settings.perfMonitor;
+            saveSettings(settings);
+            monitor.style.display = settings.perfMonitor ? 'block' : 'none';
+            if (settings.perfMonitor && !window._perfInitialized) {
+                updatePerfMonitor();
+                window._perfInitialized = true;
+            }
+        }
+        
+        // Fullscreen
+        function toggleFullscreen() {
+            const elem = document.documentElement;
+            if (!document.fullscreenElement) {
+                elem.requestFullscreen().catch(err => showToast('Fullscreen not available'));
+            } else {
+                document.exitFullscreen();
+            }
+        }
+        
+        // Initialize all features on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                initProgressTracker();
+                initSearch();
+                document.getElementById('progress-container').style.display = 'block';
+                
+                // Add data attributes to paintings for search
+                PAINTINGS_DATA.forEach(p => {
+                    const el = document.getElementById(p.id);
+                    if (el) {
+                        const parent = el.closest('a-entity');
+                        if (parent) {
+                            const pos = parent.getAttribute('position');
+                            if (pos) {
+                                const [x, y, z] = pos.split(' ');
+                                parent.setAttribute('data-pos-x', x);
+                                parent.setAttribute('data-pos-y', y);
+                                parent.setAttribute('data-pos-z', z);
+                            }
+                        }
+                    }
+                });
+                
+                // Load and apply settings
+                const settings = loadSettings();
+                applyGraphicsSettings(settings);
+                if (settings.volume !== 50) setVolume(settings.volume);
+                if (settings.textSize !== 1.0) setTextSize(settings.textSize);
+                
+                showToast('✨ Welcome to Nyero AVR! Press H for help or use the Settings menu.');
+            }, 500);
+        });
+        
+        // Directions Panel Management
+        const PAINTING_SITES = [
+            { id: 'nyero-1', name: 'Shelter 1 (Nyero 1)', position: [-0.5, 0, -6], description: 'White concentric circles and acacia pod motifs' },
+            { id: 'nyero-2', name: 'Shelter 2 (Nyero 2)', position: [2, 0, -5], description: '40+ red motifs with iconic acacia pod design' },
+            { id: 'nyero-3', name: 'Shelter 3 (Nyero 3)', position: [4, 0, -3], description: 'White circles with double curved designs' },
+            { id: 'nyero-4', name: 'Shelter 4 (Nyero 4)', position: [1, 0, -8], description: 'Red finger-painted circles and conical shapes' },
+            { id: 'nyero-5', name: 'Shelter 5 (Nyero 5)', position: [-3, 0, -4], description: 'Red geometric motifs on western side' }
+        ];
+
+        let visitedSites = JSON.parse(localStorage.getItem('visitedSites') || '[]');
+        let directionsVisible = JSON.parse(localStorage.getItem('directionsVisible') ?? 'true');
+
+        function updateDirectionsPanel() {
+            const panel = document.getElementById('directions-panel');
+            const currentDiv = document.getElementById('directions-current');
+            const nextDiv = document.getElementById('directions-next');
+            
+            if (!panel || !currentDiv || !nextDiv) return;
+
+            // Find nearest unvisited site
+            let nearestUnvisited = null;
+            let minDistance = Infinity;
+
+            PAINTING_SITES.forEach(site => {
+                if (!visitedSites.includes(site.id)) {
+                    const distance = Math.sqrt(site.position[0]**2 + site.position[2]**2);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        nearestUnvisited = site;
+                    }
+                }
+            });
+
+            if (nearestUnvisited) {
+                currentDiv.textContent = `📍 Visit: ${nearestUnvisited.name}`;
+                nextDiv.innerHTML = `
+                    <div style="margin-bottom: 6px;"><strong>Next Target:</strong></div>
+                    <div>${nearestUnvisited.description}</div>
+                    <div style="margin-top: 6px; opacity: 0.8;">Distance: ${minDistance.toFixed(1)} units</div>
+                    <div style="margin-top: 8px; font-size: 11px; opacity: 0.7;">Visited: ${visitedSites.length}/${PAINTING_SITES.length}</div>
+                `;
+            } else {
+                currentDiv.textContent = '✅ All Sites Visited!';
+                nextDiv.innerHTML = `<div>Congratulations! You've explored all ${PAINTING_SITES.length} painting sites at Nyero.</div>`;
+            }
+        }
+
+        function toggleDirections() {
+            const panel = document.getElementById('directions-panel');
+            if (panel) {
+                directionsVisible = !directionsVisible;
+                panel.style.display = directionsVisible ? 'block' : 'none';
+                localStorage.setItem('directionsVisible', directionsVisible);
+            }
+        }
+
+        function markSiteVisited(siteId) {
+            if (!visitedSites.includes(siteId)) {
+                visitedSites.push(siteId);
+                localStorage.setItem('visitedSites', JSON.stringify(visitedSites));
+                updateDirectionsPanel();
+                if (visitedSites.length === PAINTING_SITES.length) {
+                    showToast('🎉 Congratulations! You\'ve visited all painting sites!');
+                }
+            }
+        }
+
+        // Initialize directions panel on page load
+        window.addEventListener('load', () => {
+            const panel = document.getElementById('directions-panel');
+            if (panel) {
+                panel.style.display = directionsVisible ? 'block' : 'none';
+            }
+            updateDirectionsPanel();
+        });
+
+        // Expose to global scope
+        window.updateDirectionsPanel = updateDirectionsPanel;
+        window.toggleDirections = toggleDirections;
+        window.markSiteVisited = markSiteVisited;
+        
+        // Keyboard shortcuts (disabled when focused on form inputs)
+        document.addEventListener('keydown', (e) => {
+            // Don't trigger shortcuts when typing in form inputs
+            const activeElement = document.activeElement;
+            const isFormInput = activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA';
+            if (isFormInput) return;
+            
+            if (e.key === 'h' || e.key === 'H') document.getElementById('help-modal').style.display = 'flex';
+            if (e.key === 'O' || e.key === 'o') document.getElementById('settings-modal').style.display = 'flex';
+            if (e.key === 'd' || e.key === 'D') toggleDirections();
+        });
+    </script>
+</body>
+</html>

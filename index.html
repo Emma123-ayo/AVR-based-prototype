@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nyero AVR System</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at top, #10203b 0%, #04070f 75%); color: #eef4ff; font-family: Inter, Arial, sans-serif; }
+    .container { width: min(520px, 100%); padding: 36px 32px; border-radius: 28px; background: rgba(9, 18, 43, 0.96); border: 1px solid rgba(96, 160, 255, 0.16); box-shadow: 0 28px 80px rgba(0, 0, 0, 0.4); }
+    h1 { margin: 0 0 14px; font-size: 2.5rem; letter-spacing: -0.04em; }
+    p { margin: 0 0 18px; line-height: 1.7; color: #c5d8f1; }
+    .launch-button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 14px 22px; border-radius: 16px; border: none; background: linear-gradient(135deg, #3478ff 0%, #2bc2c9 100%); color: #fff; font-size: 1rem; font-weight: 700; text-decoration: none; box-shadow: 0 18px 40px rgba(32, 112, 255, 0.28); transition: transform 0.2s ease, box-shadow 0.2s ease; }
+    .launch-button:hover { transform: translateY(-2px); box-shadow: 0 24px 48px rgba(32, 112, 255, 0.3); }
+    .hint { margin-top: 12px; font-size: 0.92rem; color: #8aa7d5; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Nyero AVR System</h1>
+    <p>Launch the app when you are ready. The login screen will remain visible until you sign in, and admin access will not open automatically.</p>
+    <a class="launch-button" href="app.html">Open Login Page</a>
+    <p class="hint">If you want a fresh start, reload this page before opening the app again.</p>
+  </div>
+</body>
+</html>

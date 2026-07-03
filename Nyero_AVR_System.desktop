@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Nyero AVR System
+Comment=Launch the Nyero AVR System backend and open the app
+Exec=bash -lc 'cd "/home/emma-ai/Documents/Nyero_AVR_System" && ./start_local.sh'
+Path=/home/emma-ai/Documents/Nyero_AVR_System
+Terminal=true
+Icon=utilities-terminal
+Categories=Utility;Development;
+StartupNotify=true
